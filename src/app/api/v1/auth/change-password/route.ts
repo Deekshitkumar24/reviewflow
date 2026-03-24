@@ -3,6 +3,8 @@ import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
 import { validateBody, errorResponse, successResponse, createAuditLog } from '@/lib/api-utils';
 import { changePasswordSchema } from '@/validators';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: Request) {
   const authUser = await getAuthUser(request);
   if (!authUser) {

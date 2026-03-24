@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import prisma from '@/lib/prisma';
 import { withAuth, successResponse, errorResponse, validateBody, parsePagination, paginationMeta, createAuditLog } from '@/lib/api-utils';
 import { createEventSchema } from '@/validators';

@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Reports & Analytics | ReviewFlow Admin',
   description: 'View event metrics, suggestion compliance, and export reports',
 };
+
 
 async function getAnalyticsData() {
   const [reviews, teamsCount, labsCount, suggestions, statusLogs] = await Promise.all([

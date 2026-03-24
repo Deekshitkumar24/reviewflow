@@ -1,195 +1,166 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Plus, Search, Calendar, MapPin, Filter, MoreHorizontal } from 'lucide-react';
+import {
+  Plus, Search, Calendar, Filter, RefreshCcw, AlertCircle,
+  ChevronLeft, ChevronRight, ExternalLink,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import apiClient from '@/lib/apiClient';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { useDebounce } from '@/hooks/useDebounce';
 
-interface EventItem {
+interface Event {
   id: string;
   eventName: string;
   organizerName: string;
   eventDate: string;
   venue: string;
+  eventType: string;
   status: string;
   totalRounds: number;
-  teamCount: number;
-  reviewedCount: number;
 }
 
-const STATUS_COLORS: Record<string, string> = {
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+const STATUS_STYLES: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  active: 'bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400',
-  completed: 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
-  archived: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  completed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  archived: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
 };
 
-export default function EventListPage() {
+const EVENT_TYPES = ['hackathon', 'project_expo', 'demo_day', 'technical_review', 'other'];
+
+export default function AdminEventsPage() {
   const router = useRouter();
-  const [events, setEvents] = useState<EventItem[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta>({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const debouncedSearch = useDebounce(search, 350);
 
-  useEffect(() => {
-    // Simulated — replace with API call
-    setTimeout(() => {
-      setEvents([
-        {
-          id: '1',
-          eventName: 'Tech Expo 2026',
-          organizerName: 'VJIT Computer Science Department',
-          eventDate: '2026-04-15',
-          venue: 'VJIT Main Campus, Block A',
-          status: 'active',
-          totalRounds: 2,
-          teamCount: 20,
-          reviewedCount: 8,
-        },
-      ]);
+  const fetchEvents = useCallback(async (page = 1) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: '25' });
+      if (debouncedSearch) params.set('q', debouncedSearch);
+      if (statusFilter) params.set('status', statusFilter);
+      if (typeFilter) params.set('eventType', typeFilter);
+
+      const { data } = await apiClient.get(`/events?${params}`);
+      setEvents(data.data);
+      if (data.meta?.meta) setMeta(data.meta.meta);
+    } catch {
+      toast.error('Failed to load events');
+    } finally {
       setLoading(false);
-    }, 500);
-  }, []);
+    }
+  }, [debouncedSearch, statusFilter, typeFilter]);
 
-  const filteredEvents = events.filter((e) => {
-    const matchesSearch = e.eventName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.organizerName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  useEffect(() => { fetchEvents(1); }, [fetchEvents]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Events</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Manage your judging events and competitions
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{meta.total} event{meta.total !== 1 ? 's' : ''} total</p>
         </div>
-        <Button onClick={() => router.push('/events/new')} className="bg-[#1A56DB] hover:bg-[#1044A5]">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Event
+        <Button onClick={() => router.push('/events/new')} className="bg-[#1A56DB] hover:bg-[#1044A5] gap-2">
+          <Plus className="w-4 h-4" /> New Event
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search events..."
-            className="pl-10 h-10"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v || '')}>
-          <SelectTrigger className="w-full sm:w-40 h-10">
-            <Filter className="w-4 h-4 mr-2 text-gray-400" />
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="archived">Archived</SelectItem>
-          </SelectContent>
-        </Select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300"
+        >
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300"
+        >
+          <option value="">All types</option>
+          {EVENT_TYPES.map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+        </select>
+        <Button variant="ghost" size="sm" onClick={() => fetchEvents(meta.page)} disabled={loading}>
+          <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
-      {/* Event List */}
+      {/* Events List */}
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-32 rounded-xl" />
-          ))}
-        </div>
-      ) : filteredEvents.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Calendar className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              {searchQuery || statusFilter !== 'all' ? 'No events found' : 'No events yet'}
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {searchQuery ? 'Try a different search term' : 'Create your first event to get started'}
-            </p>
-            {!searchQuery && (
-              <Button onClick={() => router.push('/events/new')} className="bg-[#1A56DB]">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Event
-              </Button>
+        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}</div>
+      ) : events.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center py-16 text-center">
+            <Calendar className="w-10 h-10 text-gray-300 mb-3" />
+            <p className="font-medium text-gray-700 dark:text-gray-300">No events found</p>
+            <p className="text-sm text-gray-400 mt-1">{search || statusFilter ? 'Try adjusting your filters.' : 'Create your first event to get started.'}</p>
+            {!search && !statusFilter && (
+              <Button onClick={() => router.push('/events/new')} className="mt-4 bg-[#1A56DB] hover:bg-[#1044A5] gap-2"><Plus className="w-4 h-4" />New Event</Button>
             )}
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredEvents.map((event, i) => (
-            <motion.div
-              key={event.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Card
-                className="border border-gray-200 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800 transition-all cursor-pointer shadow-sm hover:shadow-md"
-                onClick={() => router.push(`/events/${event.id}`)}
-              >
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-2.5">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-lg">
-                          {event.eventName}
-                        </h3>
-                        <Badge className={STATUS_COLORS[event.status]} variant="secondary">
-                          {event.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {event.organizerName}
+          {events.map((event, i) => (
+            <motion.div key={event.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+              <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/events/${event.id}`)}>
+                <CardContent className="p-5 flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">{event.eventName}</h3>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_STYLES[event.status] ?? STATUS_STYLES.draft}`}>
+                        {event.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                      {event.organizerName} · {event.venue} · {event.totalRounds} round{event.totalRounds !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0 text-right">
+                    <div className="hidden sm:block">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {event.eventDate ? format(new Date(event.eventDate), 'MMM d, yyyy') : '—'}
                       </p>
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          {new Date(event.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" />
-                          {event.venue}
-                        </span>
-                      </div>
+                      <p className="text-xs text-gray-400 capitalize">{event.eventType.replace('_', ' ')}</p>
                     </div>
-
-                    <div className="flex items-center gap-6 text-right">
-                      <div>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{event.teamCount}</p>
-                        <p className="text-xs text-gray-500">Teams</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{event.reviewedCount}</p>
-                        <p className="text-xs text-gray-500">Reviewed</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{event.totalRounds}</p>
-                        <p className="text-xs text-gray-500">Rounds</p>
-                      </div>
-                    </div>
+                    <ExternalLink className="w-4 h-4 text-gray-400" />
                   </div>
                 </CardContent>
               </Card>
@@ -198,10 +169,18 @@ export default function EventListPage() {
         </div>
       )}
 
-      {/* Pagination placeholder */}
-      {filteredEvents.length > 0 && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>Showing {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}</span>
+      {/* Pagination */}
+      {meta.totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-800 pt-4">
+          <p className="text-sm text-gray-500">Page {meta.page} of {meta.totalPages} ({meta.total} total)</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => fetchEvents(meta.page - 1)} disabled={meta.page <= 1}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => fetchEvents(meta.page + 1)} disabled={meta.page >= meta.totalPages}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       )}
     </div>

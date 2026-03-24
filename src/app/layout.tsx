@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/components/app/QueryProvider";
+import { AuthProvider } from "@/components/app/AuthProvider";
 
 export const metadata: Metadata = {
   title: "ReviewFlow — Professional Event Judging Platform",
@@ -23,8 +24,10 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen antialiased">
         <QueryProvider>
-          {children}
-          <Toaster richColors position="top-right" />
+          <AuthProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+          </AuthProvider>
         </QueryProvider>
       </body>
     </html>

@@ -18,6 +18,11 @@ import {
   Moon,
   Sun,
   Search,
+  Users2,
+  FlaskConical,
+  Activity,
+  BarChart2,
+  Trophy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +34,11 @@ import apiClient from '@/lib/apiClient';
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/events', label: 'Events', icon: Calendar },
+  { href: '/teams', label: 'Teams', icon: Users2 },
+  { href: '/labs', label: 'Labs', icon: FlaskConical },
   { href: '/users', label: 'Users', icon: Users },
+  { href: '/live', label: 'Live Monitor', icon: Activity },
+  { href: '/reports', label: 'Reports', icon: BarChart2 },
   { href: '/audit-logs', label: 'Audit Logs', icon: FileText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

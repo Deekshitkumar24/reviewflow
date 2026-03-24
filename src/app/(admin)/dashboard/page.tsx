@@ -3,252 +3,181 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Calendar,
-  Users,
-  FlaskConical,
-  ClipboardList,
-  TrendingUp,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Plus,
+  Calendar, Users, ClipboardList, CheckCircle,
+  AlertCircle, TrendingUp, BarChart2, RefreshCcw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { useRouter } from 'next/navigation';
-import { useAppStore } from '@/stores/useAppStore';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import apiClient from '@/lib/apiClient';
+import { toast } from 'sonner';
+import Link from 'next/link';
+import { formatDistanceToNow } from 'date-fns';
 
 interface DashboardStats {
   totalEvents: number;
   activeEvents: number;
+  draftEvents: number;
   totalTeams: number;
-  totalMentors: number;
+  checkedInTeams: number;
+  totalUsers: number;
+  mentorCount: number;
   totalReviews: number;
-  pendingReviews: number;
+  draftReviews: number;
+  suggestionCompliance: number;
   recentEvents: {
     id: string;
     eventName: string;
     status: string;
     eventDate: string;
     teamCount: number;
+    roundCount: number;
+    reviewsCompleted: number;
     reviewProgress: number;
   }[];
 }
 
-const KPI_CARDS = [
-  { key: 'activeEvents', label: 'Active Events', icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-  { key: 'totalTeams', label: 'Total Teams', icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-  { key: 'totalReviews', label: 'Reviews Done', icon: ClipboardList, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
-  { key: 'pendingReviews', label: 'Pending Reviews', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-];
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  draft: { label: 'Draft', color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+  active: { label: 'Active', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  completed: { label: 'Completed', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  archived: { label: 'Archived', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+};
 
-export default function AdminDashboard() {
-  const router = useRouter();
-  const { user } = useAppStore();
+export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Simulated dashboard data — replace with API call
-    const timer = setTimeout(() => {
-      setStats({
-        totalEvents: 3,
-        activeEvents: 1,
-        totalTeams: 20,
-        totalMentors: 2,
-        totalReviews: 8,
-        pendingReviews: 12,
-        recentEvents: [
-          {
-            id: '1',
-            eventName: 'Tech Expo 2026',
-            status: 'active',
-            eventDate: '2026-04-15',
-            teamCount: 20,
-            reviewProgress: 40,
-          },
-        ],
-      });
+  const fetchStats = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await apiClient.get('/dashboard/stats');
+      setStats(data.data);
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Failed to load dashboard data';
+      setError(message);
+      toast.error(message);
+    } finally {
       setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const statusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400';
-      case 'draft': return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
-      case 'completed': return 'bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400';
-      default: return 'bg-gray-100 text-gray-600';
     }
   };
 
+  useEffect(() => { fetchStats(); }, []);
+
+  const kpis = stats ? [
+    { label: 'Total Events', value: stats.totalEvents, sub: `${stats.activeEvents} active`, icon: Calendar, color: 'text-blue-600' },
+    { label: 'Total Teams', value: stats.totalTeams, sub: `${stats.checkedInTeams} checked in`, icon: Users, color: 'text-green-600' },
+    { label: 'Reviews Submitted', value: stats.totalReviews, sub: `${stats.draftReviews} drafts`, icon: ClipboardList, color: 'text-purple-600' },
+    { label: 'Suggestion Compliance', value: `${stats.suggestionCompliance}%`, sub: 'across all rounds', icon: TrendingUp, color: 'text-orange-600' },
+  ] : [];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Dashboard
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Welcome back, {user?.fullName}
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Real-time event and review activity overview</p>
         </div>
-        <Button onClick={() => router.push('/events/new')} className="bg-[#1A56DB] hover:bg-[#1044A5]">
-          <Plus className="w-4 h-4 mr-2" />
-          New Event
+        <Button variant="outline" size="sm" onClick={fetchStats} disabled={loading} className="gap-2">
+          <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
         </Button>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {KPI_CARDS.map((kpi, i) => (
-          <motion.div
-            key={kpi.key}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-          >
-            <Card className="border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{kpi.label}</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">
-                      {loading ? (
-                        <span className="inline-block w-12 h-7 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
-                      ) : (
-                        (stats?.[kpi.key as keyof DashboardStats] as number) ?? 0
-                      )}
-                    </p>
-                  </div>
-                  <div className={`w-10 h-10 rounded-xl ${kpi.bg} flex items-center justify-center`}>
-                    <kpi.icon className={`w-5 h-5 ${kpi.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Recent Events & Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Events */}
-        <div className="lg:col-span-2">
-          <Card className="border border-gray-200 dark:border-gray-800">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold">Recent Events</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => router.push('/events')} className="text-sm text-[#1A56DB]">
-                  View all
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="space-y-4">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />
-                  ))}
-                </div>
-              ) : stats?.recentEvents.length === 0 ? (
-                <div className="text-center py-10">
-                  <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">No events yet</p>
-                  <Button size="sm" className="mt-3" onClick={() => router.push('/events/new')}>
-                    Create your first event
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {stats?.recentEvents.map((event) => (
-                    <motion.div
-                      key={event.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/events/${event.id}`)}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{event.eventName}</h3>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {new Date(event.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            · {event.teamCount} teams
-                          </p>
-                        </div>
-                        <Badge className={statusColor(event.status)} variant="secondary">
-                          {event.status}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Progress value={event.reviewProgress} className="flex-1 h-2" />
-                        <span className="text-xs font-medium text-gray-500">{event.reviewProgress}%</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+      {/* Error State */}
+      {error && !loading && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Failed to load dashboard</p>
+            <p className="text-sm">{error}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchStats} className="ml-auto">Retry</Button>
         </div>
+      )}
 
-        {/* Quick Stats */}
-        <Card className="border border-gray-200 dark:border-gray-800">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full justify-start h-11"
-              onClick={() => router.push('/events/new')}
-            >
-              <Plus className="w-4 h-4 mr-2.5 text-blue-500" />
-              Create Event
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start h-11"
-              onClick={() => router.push('/users')}
-            >
-              <Users className="w-4 h-4 mr-2.5 text-purple-500" />
-              Manage Users
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start h-11"
-              onClick={() => router.push('/events')}
-            >
-              <TrendingUp className="w-4 h-4 mr-2.5 text-emerald-500" />
-              View Analytics
-            </Button>
-
-            <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">System Status</h4>
-              <div className="space-y-2.5">
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span className="text-gray-600 dark:text-gray-400">Database connected</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span className="text-gray-600 dark:text-gray-400">Auth service online</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
-                  <span className="text-gray-600 dark:text-gray-400">Real-time: polling mode</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {loading
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}><CardContent className="p-6"><Skeleton className="h-16 w-full" /></CardContent></Card>
+            ))
+          : kpis.map((kpi, i) => (
+              <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{kpi.label}</p>
+                        <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">{kpi.value}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{kpi.sub}</p>
+                      </div>
+                      <div className={`p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800 ${kpi.color}`}>
+                        <kpi.icon className="w-5 h-5" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))
+        }
       </div>
+
+      {/* Recent Events */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-gray-400" />
+            Recent Events
+          </CardTitle>
+          <Link href="/events" className="text-xs text-[#1A56DB] hover:underline">View all →</Link>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+          ) : stats?.recentEvents.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 dark:text-gray-600">
+              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No events yet. <Link href="/events/new" className="text-[#1A56DB] hover:underline">Create your first event</Link></p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {stats?.recentEvents.map((event) => {
+                const s = STATUS_MAP[event.status] ?? STATUS_MAP.draft;
+                return (
+                  <Link key={event.id} href={`/events/${event.id}`} className="flex items-center justify-between py-3.5 hover:bg-gray-50 dark:hover:bg-gray-900/50 -mx-6 px-6 transition-colors">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">{event.eventName}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {event.teamCount} teams · {event.roundCount} round{event.roundCount !== 1 ? 's' : ''}
+                        {event.eventDate ? ` · ${formatDistanceToNow(new Date(event.eventDate), { addSuffix: true })}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                      {/* Review progress bar */}
+                      <div className="hidden sm:flex items-center gap-2">
+                        <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#1A56DB] rounded-full transition-all"
+                            style={{ width: `${event.reviewProgress}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-400">{event.reviewProgress}%</span>
+                      </div>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.color}`}>{s.label}</span>
+                      {event.status === 'active' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

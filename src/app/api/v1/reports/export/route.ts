@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import prisma from '@/lib/prisma';
 import { withAuth, errorResponse } from '@/lib/api-utils';
 import { NextResponse } from 'next/server';

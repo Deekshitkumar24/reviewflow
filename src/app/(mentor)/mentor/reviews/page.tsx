@@ -1,102 +1,134 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Search, CheckCircle2, Clock, ClipboardList, ArrowUpDown } from 'lucide-react';
+import { ClipboardList, CheckCircle2, ChevronRight, RefreshCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { VERDICT_CONFIG, type VerdictType } from '@/types';
+import apiClient from '@/lib/apiClient';
+import { toast } from 'sonner';
+import { formatDistanceToNow } from 'date-fns';
 
 interface ReviewItem {
   id: string;
+  teamId: string;
   teamName: string;
   projectTitle: string;
-  labName: string;
   roundName: string;
-  compositeScore: number;
-  verdict: VerdictType;
+  totalScore: number | null;
+  verdict: VerdictType | null;
   isDraft: boolean;
-  reviewedAt: string;
+  submittedAt: string | null;
+  createdAt: string;
 }
 
 export default function MentorReviewsPage() {
   const router = useRouter();
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    setTimeout(() => {
-      setReviews([
-        { id: '1', teamName: 'AlgoX', projectTitle: 'AI Code Review', labName: 'Lab 101', roundName: 'Round 1', compositeScore: 82.5, verdict: 'selected', isDraft: false, reviewedAt: '2026-04-15T10:30:00' },
-        { id: '2', teamName: 'ByteHackers', projectTitle: 'Collaborative IDE', labName: 'Lab 101', roundName: 'Round 1', compositeScore: 71.3, verdict: 'shortlisted', isDraft: false, reviewedAt: '2026-04-15T11:15:00' },
-        { id: '3', teamName: 'CyberGuards', projectTitle: 'Intrusion Detection', labName: 'Lab 101', roundName: 'Round 1', compositeScore: 58.0, verdict: 'hold', isDraft: true, reviewedAt: '2026-04-15T11:45:00' },
-      ]);
+  const fetchReviews = async () => {
+    setLoading(true);
+    try {
+      // Backend enforces: mentors see only their own reviews
+      const { data } = await apiClient.get('/reviews?limit=100&orderBy=createdAt&order=desc');
+      setReviews(data.data ?? []);
+    } catch {
+      toast.error('Failed to load reviews');
+    } finally {
       setLoading(false);
-    }, 300);
-  }, []);
+    }
+  };
 
-  const filtered = reviews.filter(r =>
-    r.teamName.toLowerCase().includes(search.toLowerCase()) ||
-    r.projectTitle.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => { fetchReviews(); }, []);
+
+  const submitted = reviews.filter((r) => !r.isDraft);
+  const drafts = reviews.filter((r) => r.isDraft);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">My Reviews</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{reviews.length} reviews submitted</p>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <Input placeholder="Search reviews..." className="pl-10 h-10" value={search} onChange={e => setSearch(e.target.value)} />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">My Reviews</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{submitted.length} submitted · {drafts.length} draft{drafts.length !== 1 ? 's' : ''}</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={fetchReviews} disabled={loading}>
+          <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       {loading ? (
-        <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
-      ) : filtered.length === 0 ? (
-        <Card><CardContent className="text-center py-12 text-gray-500"><ClipboardList className="w-10 h-10 mx-auto mb-2 text-gray-300" />No reviews yet</CardContent></Card>
+        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+      ) : reviews.length === 0 ? (
+        <Card><CardContent className="py-14 text-center text-gray-400">
+          <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="font-medium">No reviews yet</p>
+          <p className="text-sm mt-1">Start reviewing teams from your lab queue.</p>
+        </CardContent></Card>
       ) : (
         <div className="space-y-2">
-          {filtered.map((review, i) => {
-            const vc = VERDICT_CONFIG[review.verdict];
-            return (
-              <motion.div key={review.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
-                <Card
-                  className="border border-gray-200 dark:border-gray-800 hover:border-blue-200 transition-all cursor-pointer"
-                  onClick={() => router.push(`/mentor/review/${review.id}`)}
-                >
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{review.teamName}</h3>
-                        <Badge variant="secondary" className="text-[10px]" style={{ backgroundColor: vc.bg, color: vc.color }}>
-                          {vc.label}
-                        </Badge>
-                        {review.isDraft && <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">Draft</Badge>}
-                      </div>
-                      <p className="text-xs text-gray-500 truncate">{review.projectTitle}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{review.labName} · {review.roundName}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{review.compositeScore.toFixed(1)}</p>
-                      <p className="text-[10px] text-gray-400">
-                        {new Date(review.reviewedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
+          {/* Drafts first */}
+          {drafts.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 px-1">Drafts</p>
+              {drafts.map((review, i) => (
+                <ReviewCard key={review.id} review={review} index={i} onClick={() => router.push(`/mentor/review/${review.teamId}?reviewId=${review.id}`)} />
+              ))}
+            </div>
+          )}
+          {submitted.length > 0 && (
+            <div className="space-y-2 mt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 px-1">Submitted</p>
+              {submitted.map((review, i) => (
+                <ReviewCard key={review.id} review={review} index={i} onClick={() => router.push(`/mentor/review/${review.teamId}?reviewId=${review.id}`)} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function ReviewCard({ review, index, onClick }: { review: ReviewItem; index: number; onClick: () => void }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }}>
+      <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
+        <CardContent className="p-4 flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{review.teamName}</h3>
+              {review.isDraft
+                ? <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">Draft</span>
+                : review.verdict && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: VERDICT_CONFIG[review.verdict].bg, color: VERDICT_CONFIG[review.verdict].color }}>
+                    {VERDICT_CONFIG[review.verdict].label}
+                  </span>
+                )
+              }
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{review.projectTitle} · {review.roundName}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {!review.isDraft && review.totalScore != null && (
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                <span className="text-sm font-bold text-gray-700 dark:text-gray-300">{review.totalScore.toFixed(1)}</span>
+              </div>
+            )}
+            <span className="text-xs text-gray-400">
+              {review.submittedAt
+                ? formatDistanceToNow(new Date(review.submittedAt), { addSuffix: true })
+                : formatDistanceToNow(new Date(review.createdAt), { addSuffix: true })}
+            </span>
+            <ChevronRight className="w-4 h-4 text-gray-300" />
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

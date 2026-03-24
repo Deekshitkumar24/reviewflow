@@ -1,6 +1,9 @@
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser, clearRefreshTokenCookie } from '@/lib/auth';
-import { errorResponse, successResponse, createAuditLog } from '@/lib/api-utils';
+import { getAuthUser } from '@/lib/auth';
+import { errorResponse, createAuditLog } from '@/lib/api-utils';
+
+export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   const user = await getAuthUser(request);
@@ -14,9 +17,6 @@ export async function POST(request: Request) {
     data: { revokedAt: new Date() },
   });
 
-  // Clear cookie
-  await clearRefreshTokenCookie();
-
   // Audit log
   await createAuditLog({
     userId: user.sub,
@@ -25,5 +25,8 @@ export async function POST(request: Request) {
     entityId: user.sub,
   });
 
-  return successResponse({ message: 'Logged out successfully' });
+  const res = NextResponse.json({ success: true, data: { message: 'Logged out successfully' } });
+  res.cookies.delete('accessToken');
+  res.cookies.delete('refreshToken');
+  return res;
 }
