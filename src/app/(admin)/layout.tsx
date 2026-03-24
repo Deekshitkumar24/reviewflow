@@ -1,0 +1,244 @@
+'use client';
+
+import { usePathname, useRouter } from 'next/navigation';
+import { useAppStore } from '@/stores/useAppStore';
+import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  LayoutDashboard,
+  Calendar,
+  Users,
+  FileText,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  Bell,
+  Shield,
+  Moon,
+  Sun,
+  Search,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
+import apiClient from '@/lib/apiClient';
+
+const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/events', label: 'Events', icon: Calendar },
+  { href: '/users', label: 'Users', icon: Users },
+  { href: '/audit-logs', label: 'Audit Logs', icon: FileText },
+  { href: '/settings', label: 'Settings', icon: Settings },
+];
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, clearAuth, sidebarCollapsed, toggleSidebar, darkMode, toggleDarkMode, unreadCount } = useAppStore();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    // Check dark mode from localStorage
+    const saved = localStorage.getItem('reviewflow-dark-mode');
+    if (saved === 'true') {
+      document.documentElement.classList.add('dark');
+      useAppStore.getState().setDarkMode(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !user) {
+      router.push('/login');
+    }
+    if (mounted && user && user.mustChangePassword) {
+      router.push('/change-password');
+    }
+    if (mounted && user && !['super_admin', 'admin'].includes(user.role)) {
+      router.push(`/${user.role}/dashboard`);
+    }
+  }, [user, mounted, router]);
+
+  const handleLogout = async () => {
+    try {
+      await apiClient.post('/auth/logout');
+    } catch {
+      // Continue logout even if API call fails
+    }
+    clearAuth();
+    toast.success('Logged out successfully');
+    router.push('/login');
+  };
+
+  if (!mounted || !user) return null;
+
+  const initials = user.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
+      {/* Sidebar */}
+      <motion.aside
+        animate={{ width: sidebarCollapsed ? 56 : 240 }}
+        transition={{ duration: 0.2, ease: 'easeInOut' }}
+        className="fixed top-0 left-0 h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-30 flex flex-col"
+      >
+        {/* Logo */}
+        <div className="h-14 flex items-center px-4 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 rounded-lg bg-[#1A56DB] flex items-center justify-center flex-shrink-0">
+              <Shield className="w-4 h-4 text-white" />
+            </div>
+            <AnimatePresence>
+              {!sidebarCollapsed && (
+                <motion.span
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap overflow-hidden"
+                >
+                  ReviewFlow
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Nav Items */}
+        <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
+          {NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            return (
+              <button
+                key={item.href}
+                onClick={() => router.push(item.href)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative ${
+                  isActive
+                    ? 'bg-blue-50 dark:bg-blue-950/40 text-[#1A56DB] dark:text-blue-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeNav"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#1A56DB] rounded-r"
+                  />
+                )}
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <AnimatePresence>
+                  {!sidebarCollapsed && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="whitespace-nowrap"
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Collapse Toggle */}
+        <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-800">
+          <button
+            onClick={toggleSidebar}
+            className="w-full flex items-center justify-center p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
+      </motion.aside>
+
+      {/* Main Content */}
+      <div
+        className="flex-1 flex flex-col transition-all duration-200"
+        style={{ marginLeft: sidebarCollapsed ? 56 : 240 }}
+      >
+        {/* Top Bar */}
+        <header className="sticky top-0 z-20 h-14 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => useAppStore.getState().toggleCommandPalette()}
+              className="flex items-center gap-2 h-9 px-3 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            >
+              <Search className="w-4 h-4" />
+              <span className="hidden sm:inline">Search...</span>
+              <kbd className="hidden sm:inline text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">⌘K</kbd>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Dark mode toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleDarkMode}
+              className="h-9 w-9 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+
+            {/* Notifications */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 relative text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label="Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <Badge className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 text-[10px] bg-red-500 text-white border-2 border-white dark:border-gray-900 rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Badge>
+              )}
+            </Button>
+
+            <Separator orientation="vertical" className="h-6 mx-1" />
+
+            {/* User Menu */}
+            <div className="flex items-center gap-2.5">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-[#1A56DB] text-white text-xs font-medium">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="hidden sm:block">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight">
+                  {user.fullName}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                  {user.role.replace('_', ' ')}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleLogout}
+                className="h-8 w-8 text-gray-400 hover:text-red-500"
+                aria-label="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 p-6">
+          <div className="max-w-[1280px] mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

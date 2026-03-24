@@ -1,0 +1,52 @@
+import prisma from '@/lib/prisma';
+import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
+import { validateBody, errorResponse, successResponse, createAuditLog } from '@/lib/api-utils';
+import { changePasswordSchema } from '@/validators';
+
+export async function POST(request: Request) {
+  const authUser = await getAuthUser(request);
+  if (!authUser) {
+    return errorResponse('UNAUTHORIZED', 'Authentication required', 401);
+  }
+
+  const validation = await validateBody(request, changePasswordSchema);
+  if (validation.error) return validation.error;
+  const { currentPassword, newPassword } = validation.data!;
+
+  // Find user
+  const user = await prisma.user.findUnique({ where: { id: authUser.sub } });
+  if (!user) {
+    return errorResponse('USER_NOT_FOUND', 'User not found', 404);
+  }
+
+  // If not first login (mustChangePassword = false), require current password
+  if (!user.mustChangePassword) {
+    if (!currentPassword) {
+      return errorResponse('VALIDATION_ERROR', 'Current password is required', 400);
+    }
+    const isValid = await verifyPassword(currentPassword, user.passwordHash);
+    if (!isValid) {
+      return errorResponse('INVALID_PASSWORD', 'Current password is incorrect', 400);
+    }
+  }
+
+  // Hash new password and update
+  const newHash = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: newHash,
+      mustChangePassword: false,
+    },
+  });
+
+  // Audit log
+  await createAuditLog({
+    userId: user.id,
+    action: 'user.password_changed',
+    entityType: 'user',
+    entityId: user.id,
+  });
+
+  return successResponse({ message: 'Password changed successfully' });
+}
