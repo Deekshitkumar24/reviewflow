@@ -1,4 +1,6 @@
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { users } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { getAuthUser, verifyPassword, hashPassword } from '@/lib/auth';
 import { validateBody, errorResponse, successResponse, createAuditLog } from '@/lib/api-utils';
 import { changePasswordSchema } from '@/validators';
@@ -16,7 +18,7 @@ export async function POST(request: Request) {
   const { currentPassword, newPassword } = validation.data!;
 
   // Find user
-  const user = await prisma.user.findUnique({ where: { id: authUser.sub } });
+  const user = await db.query.users.findFirst({ where: eq(users.id, authUser.sub) });
   if (!user) {
     return errorResponse('USER_NOT_FOUND', 'User not found', 404);
   }
@@ -34,13 +36,12 @@ export async function POST(request: Request) {
 
   // Hash new password and update
   const newHash = await hashPassword(newPassword);
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
+  await db.update(users)
+    .set({
       passwordHash: newHash,
       mustChangePassword: false,
-    },
-  });
+    })
+    .where(eq(users.id, user.id));
 
   // Audit log
   await createAuditLog({

@@ -1,6 +1,8 @@
 export const runtime = 'nodejs';
 
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { reviews, rounds, mentorAssignments, suggestions, suggestionStatusLogs } from '@/db/schema';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, parsePagination, paginationMeta, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
 import { calculateCompositeScore } from '@/types';
@@ -38,40 +40,41 @@ export async function GET(request: Request) {
   return withAuth(request, async (user) => {
     const url = new URL(request.url);
     const { page, limit, skip } = parsePagination(url);
-    const eventId = url.searchParams.get('eventId') || undefined;
-    const teamId = url.searchParams.get('teamId') || undefined;
-    const mentorId = url.searchParams.get('mentorId') || undefined;
-    const isDraft = url.searchParams.has('isDraft') ? url.searchParams.get('isDraft') === 'true' : undefined;
+    // eventId search handled safely through relations conceptually
+    const teamIdParam = url.searchParams.get('teamId') || undefined;
+    const mentorIdParam = url.searchParams.get('mentorId') || undefined;
+    const isDraftParam = url.searchParams.has('isDraft') ? url.searchParams.get('isDraft') === 'true' : undefined;
 
-    const where: Record<string, unknown> = { };
-    if (eventId) where.eventId = eventId;
-    if (teamId) where.teamId = teamId;
+    const conditions = [];
+    if (teamIdParam) conditions.push(eq(reviews.teamId, teamIdParam));
     
     // Non-admins can only see their own drafts, but can see all submitted reviews (or access controlled)
-    if (user.role === 'mentor' && mentorId === user.sub) {
-      where.mentorId = user.sub;
-    } else if (mentorId) {
-       where.mentorId = mentorId;
+    if (user.role === 'mentor' && mentorIdParam === user.sub) {
+        conditions.push(eq(reviews.mentorId, user.sub));
+    } else if (mentorIdParam) {
+        conditions.push(eq(reviews.mentorId, mentorIdParam));
     }
     
-    if (isDraft !== undefined) where.isDraft = isDraft;
+    if (isDraftParam !== undefined) conditions.push(eq(reviews.isDraft, isDraftParam));
 
-    const [reviews, total] = await Promise.all([
-      prisma.review.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { reviewedAt: 'desc' },
-        include: {
-          team: { select: { teamName: true } },
-          mentor: { select: { fullName: true } },
-          round: { select: { roundName: true, roundOrder: true } },
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [reviewList, totalObj] = await Promise.all([
+      db.query.reviews.findMany({
+        where: whereClause,
+        limit,
+        offset: skip,
+        orderBy: [desc(reviews.reviewedAt)],
+        with: {
+          team: { columns: { teamName: true } },
+          mentor: { columns: { fullName: true } },
+          round: { columns: { roundName: true, roundOrder: true } },
         },
       }),
-      prisma.review.count({ where }),
+      db.select({ value: count() }).from(reviews).where(whereClause),
     ]);
 
-    const data = reviews.map((r: typeof reviews[number]) => ({
+    const data = reviewList.map((r) => ({
       id: r.id,
       teamName: r.team.teamName,
       mentorName: r.mentor.fullName,
@@ -79,11 +82,10 @@ export async function GET(request: Request) {
       compositeScore: r.compositeScore,
       verdict: r.verdict,
       isDraft: r.isDraft,
-      // submittedAt removed since we use reviewedAt
       reviewedAt: r.reviewedAt.toISOString(),
     }));
 
-    return successResponse(data, 200, { meta: paginationMeta(total, page, limit) });
+    return successResponse(data, 200, { meta: paginationMeta(totalObj[0].value, page, limit) });
   });
 }
 
@@ -96,8 +98,13 @@ export async function POST(request: Request) {
 
     // Find previous review if not a draft to block duplicates
     if (!data.isDraft) {
-      const existing = await prisma.review.findFirst({
-        where: { teamId: data.teamId, roundId: data.roundId, mentorId: user.sub, isDraft: false }
+      const existing = await db.query.reviews.findFirst({
+        where: and(
+            eq(reviews.teamId, data.teamId),
+            eq(reviews.roundId, data.roundId),
+            eq(reviews.mentorId, user.sub),
+            eq(reviews.isDraft, false)
+        )
       });
       if (existing) {
         return errorResponse('REVIEW_EXISTS', 'You have already submitted a final review for this team in this round', 409);
@@ -105,27 +112,38 @@ export async function POST(request: Request) {
     }
 
     // Look up the round & lab
-    const [round, labAssignment] = await Promise.all([
-      prisma.round.findUnique({ where: { id: data.roundId } }),
-      prisma.mentorAssignment.findFirst({ where: { mentorId: user.sub, roundId: data.roundId } })
+    const [roundRecord, labAssignment] = await Promise.all([
+      db.query.rounds.findFirst({ where: eq(rounds.id, data.roundId) }),
+      db.query.mentorAssignments.findFirst({ 
+          where: and(eq(mentorAssignments.mentorId, user.sub), eq(mentorAssignments.roundId, data.roundId)) 
+      })
     ]);
-    if (!round) return errorResponse('NOT_FOUND', 'Round not found', 404);
-    if (!labAssignment) return errorResponse('NOT_FOUND', 'You are not assigned to a lab for this round. Cannot submit review.', 403);
 
-    const compositeScore = calculateCompositeScore(data.scores);
+    if (!roundRecord) return errorResponse('NOT_FOUND', 'Round not found', 404);
+    if (!labAssignment) return errorResponse('NOT_FOUND', 'You are not assigned to a lab for this round. Cannot submit review.', 403);
+    if (roundRecord.status !== 'open') {
+      return errorResponse('FORBIDDEN', 'This round is not currently open for reviews.', 403);
+    }
+
+    const compositeScoreValue = calculateCompositeScore(data.scores);
 
     // Create review inside transaction to save suggestions & statuses
-    const review = await prisma.$transaction(async (tx) => {
+    const reviewResult = await db.transaction(async (tx) => {
       // Find and delete any existing draft for this mentor/team/round
-      const oldDraft = await tx.review.findFirst({
-         where: { teamId: data.teamId, roundId: data.roundId, mentorId: user.sub, isDraft: true }
+      const oldDraft = await tx.query.reviews.findFirst({
+         where: and(
+             eq(reviews.teamId, data.teamId),
+             eq(reviews.roundId, data.roundId),
+             eq(reviews.mentorId, user.sub),
+             eq(reviews.isDraft, true)
+         )
       });
+
       if (oldDraft) {
-         await tx.review.delete({ where: { id: oldDraft.id } });
+         await tx.delete(reviews).where(eq(reviews.id, oldDraft.id));
       }
 
-      const rev = await tx.review.create({
-        data: {
+      const inserted = await tx.insert(reviews).values({
           teamId: data.teamId,
           mentorId: user.sub,
           labId: labAssignment.labId,
@@ -136,35 +154,37 @@ export async function POST(request: Request) {
           feasibilityScore: data.scores.feasibilityScore,
           problemSolvingScore: data.scores.problemSolvingScore,
           communicationScore: data.scores.communicationScore,
-          compositeScore,
+          compositeScore: compositeScoreValue.toString(),
           strengths: data.strengths || null,
           weaknesses: data.weaknesses,
           overallComments: data.overallComments || null,
           verdict: data.verdict,
           isDraft: data.isDraft,
           reviewedAt: data.isDraft ? undefined : new Date(),
-          
-          suggestions: data.suggestions && data.suggestions.length > 0 ? {
-            create: data.suggestions.map(s => ({
-              text: s.text,
-              category: s.category,
-              orderIndex: s.orderIndex,
-            }))
-          } : undefined,
-        }
-      });
+      }).returning();
+
+      const rev = inserted[0];
+
+      if (data.suggestions && data.suggestions.length > 0) {
+          await tx.insert(suggestions).values(
+              data.suggestions.map(s => ({
+                  reviewId: rev.id,
+                  text: s.text,
+                  category: s.category,
+                  orderIndex: s.orderIndex,
+              }))
+          );
+      }
 
       // Handle suggestion statuses if any
       if (data.suggestionStatuses && data.suggestionStatuses.length > 0 && !data.isDraft) {
-        for (const ss of data.suggestionStatuses) {
-           await tx.suggestionStatusLog.create({
-             data: {
-               suggestionId: ss.suggestionId,
-               roundId: data.roundId,
-               status: ss.status,
-             }
-           });
-        }
+          await tx.insert(suggestionStatusLogs).values(
+              data.suggestionStatuses.map(ss => ({
+                  suggestionId: ss.suggestionId,
+                  roundId: data.roundId,
+                  status: ss.status
+              }))
+          );
       }
 
       return rev;
@@ -175,11 +195,11 @@ export async function POST(request: Request) {
         userId: user.sub,
         action: 'review.submitted',
         entityType: 'review',
-        entityId: review.id,
-        newValues: { teamId: data.teamId, compositeScore, verdict: data.verdict },
+        entityId: reviewResult.id,
+        newValues: { teamId: data.teamId, compositeScore: compositeScoreValue, verdict: data.verdict },
       });
     }
 
-    return successResponse(review, 201);
+    return successResponse(reviewResult, 201);
   }, ['mentor', 'admin', 'super_admin']); // Admins can test/submit reviews
 }

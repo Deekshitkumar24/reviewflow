@@ -1,8 +1,10 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { labs } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const updateLabSchema = z.object({
   labName: z.string().min(1).max(100).optional(),
@@ -20,10 +22,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ la
     const validation = await validateBody(request, updateLabSchema);
     if (validation.error) return validation.error;
 
-    const existing = await prisma.lab.findFirst({ where: { id: labId, deletedAt: null } });
+    const existing = await db.query.labs.findFirst({ where: and(eq(labs.id, labId), isNull(labs.deletedAt)) });
     if (!existing) return errorResponse('NOT_FOUND', 'Lab not found', 404);
 
-    const lab = await prisma.lab.update({ where: { id: labId }, data: validation.data! });
+    const labList = await db.update(labs)
+        .set(validation.data! as any)
+        .where(eq(labs.id, labId))
+        .returning();
+
+    const lab = labList[0];
+    
     await createAuditLog({ userId: user.sub, action: 'lab.updated', entityType: 'lab', entityId: labId });
     return successResponse(lab);
   }, ['super_admin', 'admin']);
@@ -33,10 +41,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ la
 export async function DELETE(request: Request, { params }: { params: Promise<{ labId: string }> }) {
   return withAuth(request, async (user) => {
     const { labId } = await params;
-    const existing = await prisma.lab.findFirst({ where: { id: labId, deletedAt: null } });
+    const existing = await db.query.labs.findFirst({ where: and(eq(labs.id, labId), isNull(labs.deletedAt)) });
     if (!existing) return errorResponse('NOT_FOUND', 'Lab not found', 404);
 
-    await prisma.lab.update({ where: { id: labId }, data: { deletedAt: new Date() } });
+    await db.update(labs).set({ deletedAt: new Date() }).where(eq(labs.id, labId));
+    
     await createAuditLog({ userId: user.sub, action: 'lab.deleted', entityType: 'lab', entityId: labId });
     return successResponse({ message: 'Lab deleted' });
   }, ['super_admin', 'admin']);

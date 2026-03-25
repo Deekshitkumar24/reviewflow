@@ -1,64 +1,146 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Search, CheckCircle2, XCircle, Users, UserCheck, AlertTriangle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Search, UserCheck, XCircle, Users, RefreshCcw, Loader2, AlertCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import apiClient from '@/lib/apiClient';
 import { ATTENDANCE_CONFIG, type AttendanceStatus } from '@/types';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface CheckInTeam {
   id: string;
   teamName: string;
   projectTitle: string;
   collegeName: string;
-  memberCount: number;
-  labName: string;
+  department: string;
+  domain: string | null;
   attendanceStatus: AttendanceStatus;
+  checkedInAt: string | null;
+}
+
+interface EventOption {
+  id: string;
+  eventName: string;
+  status: string;
 }
 
 export default function CoordinatorCheckIn() {
   const [teams, setTeams] = useState<CheckInTeam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
-  useEffect(() => {
-    setTimeout(() => {
-      setTeams([
-        { id: '1', teamName: 'AlgoX', projectTitle: 'AI Code Review', collegeName: 'VJIT', memberCount: 3, labName: 'Lab 101', attendanceStatus: 'checked_in' },
-        { id: '2', teamName: 'ByteHackers', projectTitle: 'Collaborative IDE', collegeName: 'VJIT', memberCount: 3, labName: 'Lab 101', attendanceStatus: 'registered' },
-        { id: '3', teamName: 'DevForge', projectTitle: 'Smart Navigation', collegeName: 'VJIT', memberCount: 3, labName: 'Lab 102', attendanceStatus: 'registered' },
-        { id: '4', teamName: 'CloudNine', projectTitle: 'Event Management', collegeName: 'VJIT', memberCount: 3, labName: 'Lab 102', attendanceStatus: 'no_show' },
-        { id: '5', teamName: 'DataWizards', projectTitle: 'Health Analytics', collegeName: 'JNTU', memberCount: 3, labName: 'Lab 201', attendanceStatus: 'registered' },
-      ]);
+  // Event context
+  const [events, setEvents] = useState<EventOption[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  // ─── Load available events ────────────────────────────────
+  const loadEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      const { data } = await apiClient.get('/events?status=active&limit=50');
+      const eventList: EventOption[] = (data.data ?? []).map((e: { id: string; eventName: string; status: string }) => ({
+        id: e.id,
+        eventName: e.eventName,
+        status: e.status,
+      }));
+      setEvents(eventList);
+      // Auto-select first active event
+      if (eventList.length > 0 && !selectedEventId) {
+        setSelectedEventId(eventList[0].id);
+      }
+    } catch {
+      toast.error('Failed to load events');
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [selectedEventId]);
+
+  useEffect(() => { loadEvents(); }, []);
+
+  // ─── Load teams for selected event ────────────────────────
+  const loadTeams = useCallback(async () => {
+    if (!selectedEventId) {
+      setTeams([]);
       setLoading(false);
-    }, 400);
-  }, []);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        eventId: selectedEventId,
+        limit: '200',
+      });
+      if (debouncedSearch) params.set('q', debouncedSearch);
+      if (statusFilter && statusFilter !== 'all') params.set('attendanceStatus', statusFilter);
 
-  const markAttendance = async (teamId: string, status: 'checked_in' | 'no_show') => {
+      const { data } = await apiClient.get(`/teams?${params}`);
+      setTeams(data.data ?? []);
+    } catch {
+      setError('Failed to load teams');
+      toast.error('Failed to load teams');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedEventId, debouncedSearch, statusFilter]);
+
+  useEffect(() => { loadTeams(); }, [loadTeams]);
+
+  // ─── Mark attendance (real API) ───────────────────────────
+  const markAttendance = async (teamId: string, action: 'check_in' | 'no_show') => {
     setActionInProgress(teamId);
     try {
-      await new Promise(r => setTimeout(r, 500));
-      setTeams(prev => prev.map(t => t.id === teamId ? { ...t, attendanceStatus: status } : t));
-      toast.success(status === 'checked_in' ? 'Team checked in!' : 'Marked as no-show');
-    } catch {
-      toast.error('Failed to update');
+      const { data } = await apiClient.post(`/teams/${teamId}/checkin`, { action });
+      // Update local state immediately for snappy UX
+      setTeams(prev =>
+        prev.map(t =>
+          t.id === teamId
+            ? { ...t, attendanceStatus: data.data.attendanceStatus, checkedInAt: data.data.checkedInAt }
+            : t
+        )
+      );
+      toast.success(action === 'check_in' ? `${data.data.teamName} checked in!` : `${data.data.teamName} marked as no-show`);
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Failed to update attendance';
+      toast.error(message);
     } finally {
       setActionInProgress(null);
     }
   };
 
-  const filtered = teams.filter(t =>
-    t.teamName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.projectTitle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // ─── Undo attendance ──────────────────────────────────────
+  const undoAttendance = async (teamId: string) => {
+    setActionInProgress(teamId);
+    try {
+      const { data } = await apiClient.post(`/teams/${teamId}/checkin`, { action: 'undo' });
+      setTeams(prev =>
+        prev.map(t =>
+          t.id === teamId
+            ? { ...t, attendanceStatus: data.data.attendanceStatus as AttendanceStatus, checkedInAt: null }
+            : t
+        )
+      );
+      toast.success('Attendance reset to registered');
+    } catch {
+      toast.error('Failed to undo attendance');
+    } finally {
+      setActionInProgress(null);
+    }
+  };
 
+  // ─── Stats ────────────────────────────────────────────────
   const stats = {
     total: teams.length,
     checkedIn: teams.filter(t => t.attendanceStatus === 'checked_in').length,
@@ -72,6 +154,34 @@ export default function CoordinatorCheckIn() {
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Team Check-In</h1>
         <p className="text-sm text-gray-500 mt-0.5">Mark teams as arrived or no-show</p>
       </div>
+
+      {/* Event Selector */}
+      {eventsLoading ? (
+        <Skeleton className="h-10 w-full max-w-xs rounded-lg" />
+      ) : events.length === 0 ? (
+        <div className="bg-amber-50 dark:bg-amber-950/20 rounded-xl p-4 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          No active events found. Ask an admin to activate an event first.
+        </div>
+      ) : events.length > 1 ? (
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Event:</label>
+          <Select value={selectedEventId} onValueChange={(v) => setSelectedEventId(v ?? '')}>
+            <SelectTrigger className="w-full max-w-xs h-10">
+              <SelectValue placeholder="Select event" />
+            </SelectTrigger>
+            <SelectContent>
+              {events.map(e => (
+                <SelectItem key={e.id} value={e.id}>{e.eventName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">
+          Event: <span className="font-medium text-gray-900 dark:text-gray-100">{events[0]?.eventName}</span>
+        </p>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
@@ -89,26 +199,61 @@ export default function CoordinatorCheckIn() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <Input
-          placeholder="Search teams..."
-          className="pl-10 h-11"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      {/* Search + Filters */}
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            placeholder="Search teams..."
+            className="pl-10 h-11"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? 'all')}>
+          <SelectTrigger className="w-36 h-11">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="registered">Pending</SelectItem>
+            <SelectItem value="checked_in">Checked In</SelectItem>
+            <SelectItem value="no_show">No Show</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="icon" onClick={loadTeams} disabled={loading} className="h-11 w-11 flex-shrink-0">
+          <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       {/* Team List */}
       {loading ? (
         <div className="space-y-3">
-          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
         </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-500">{error}</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={loadTeams}>Retry</Button>
+          </CardContent>
+        </Card>
+      ) : teams.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 font-medium">No teams found</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {searchQuery ? 'Try adjusting your search.' : 'No teams imported for this event yet.'}
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-2">
-          {filtered.map((team, i) => {
-            const config = ATTENDANCE_CONFIG[team.attendanceStatus];
+          {teams.map((team, i) => {
+            const config = ATTENDANCE_CONFIG[team.attendanceStatus] ?? ATTENDANCE_CONFIG.registered;
+            const isProcessing = actionInProgress === team.id;
             return (
               <motion.div
                 key={team.id}
@@ -127,44 +272,64 @@ export default function CoordinatorCheckIn() {
                           </Badge>
                         </div>
                         <p className="text-xs text-gray-500 truncate">{team.projectTitle}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{team.labName} · {team.collegeName}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {team.department} · {team.collegeName}
+                          {team.checkedInAt && (
+                            <span className="ml-2 text-green-600">
+                              · Checked in at {new Date(team.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </p>
                       </div>
 
-                      {team.attendanceStatus === 'registered' && (
-                        <div className="flex gap-2 flex-shrink-0">
+                      <div className="flex gap-2 flex-shrink-0">
+                        {team.attendanceStatus === 'registered' && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => markAttendance(team.id, 'check_in')}
+                              disabled={isProcessing}
+                              className="bg-green-600 hover:bg-green-700 h-10 px-3 min-w-[44px]"
+                            >
+                              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => markAttendance(team.id, 'no_show')}
+                              disabled={isProcessing}
+                              className="text-red-500 border-red-200 hover:bg-red-50 h-10 px-3 min-w-[44px]"
+                            >
+                              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                            </Button>
+                          </>
+                        )}
+                        {(team.attendanceStatus === 'checked_in' || team.attendanceStatus === 'no_show') && (
                           <Button
                             size="sm"
-                            onClick={() => markAttendance(team.id, 'checked_in')}
-                            disabled={actionInProgress === team.id}
-                            className="bg-green-600 hover:bg-green-700 h-10 px-3 min-w-[44px]"
+                            variant="ghost"
+                            onClick={() => undoAttendance(team.id)}
+                            disabled={isProcessing}
+                            className="text-gray-400 hover:text-gray-600 h-10 px-3 text-xs"
                           >
-                            <UserCheck className="w-4 h-4" />
+                            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Undo'}
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => markAttendance(team.id, 'no_show')}
-                            disabled={actionInProgress === team.id}
-                            className="text-red-500 border-red-200 hover:bg-red-50 h-10 px-3 min-w-[44px]"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
             );
           })}
-
-          {filtered.length === 0 && (
-            <div className="text-center py-10">
-              <Users className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No teams found</p>
-            </div>
-          )}
         </div>
+      )}
+
+      {/* Total count */}
+      {!loading && teams.length > 0 && (
+        <p className="text-xs text-gray-400 text-center">
+          Showing {teams.length} team{teams.length !== 1 ? 's' : ''} · {stats.checkedIn}/{stats.total} checked in
+        </p>
       )}
     </div>
   );

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { refreshTokens } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { getAuthUser } from '@/lib/auth';
 import { errorResponse, createAuditLog } from '@/lib/api-utils';
 
@@ -12,10 +14,9 @@ export async function POST(request: Request) {
   }
 
   // Revoke all refresh tokens for this user
-  await prisma.refreshToken.updateMany({
-    where: { userId: user.sub, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  await db.update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.userId, user.sub), isNull(refreshTokens.revokedAt)));
 
   // Audit log
   await createAuditLog({

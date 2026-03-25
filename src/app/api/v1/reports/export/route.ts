@@ -1,12 +1,14 @@
 export const runtime = 'nodejs';
 
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { teams, reviews, results } from '@/db/schema';
+import { eq, and, isNull, asc } from 'drizzle-orm';
 import { withAuth, errorResponse } from '@/lib/api-utils';
 import { NextResponse } from 'next/server';
 
 // GET /api/v1/reports/export?eventId=...&type=teams|reviews|results
 export async function GET(request: Request) {
-  return withAuth(request, async (user) => {
+  return withAuth(request, async () => {
     const url = new URL(request.url);
     const eventId = url.searchParams.get('eventId');
     const type = url.searchParams.get('type');
@@ -16,33 +18,47 @@ export async function GET(request: Request) {
     let csvContent = '';
 
     if (type === 'teams') {
-      const teams = await prisma.team.findMany({
-        where: { eventId, deletedAt: null },
-        include: { members: true },
+      const teamList = await db.query.teams.findMany({
+        where: and(eq(teams.eventId, eventId), isNull(teams.deletedAt)),
+        with: { members: true },
       });
       csvContent = 'Team Name,Project Title,Domain,College,Status,Member Count\n';
-      csvContent += teams.map(t => 
+      csvContent += teamList.map(t => 
         `"${t.teamName}","${t.projectTitle}","${t.domain || ''}","${t.collegeName}","${t.attendanceStatus}",${t.members.length}`
       ).join('\n');
     } 
     else if (type === 'reviews') {
-      const reviews = await prisma.review.findMany({
-        where: { team: { eventId } },
-        include: { mentor: true, team: true, round: true },
-      });
+      // Find reviews that belong to a specific event ID through teams
+      // Because Drizzle standard mappings don't support deep relation queries on the `where` top level directly easily:
+      const reviewList = await db.select()
+        .from(reviews)
+        .leftJoin(teams, eq(reviews.teamId, teams.id))
+        .where(eq(teams.eventId, eventId));
+      
+      const ids = reviewList.map(r => r.reviews.id);
+      
+      let fetchedReviews: any[] = [];
+      if (ids.length > 0) {
+          // Fallback to query builder for easy nested include loading
+          const dataFetched = await db.query.reviews.findMany({
+              with: { mentor: { columns: { fullName: true } }, team: { columns: { teamName: true } }, round: { columns: { roundName: true } } }
+          });
+          fetchedReviews = dataFetched.filter(r => ids.includes(r.id));
+      }
+
       csvContent = 'Team,Mentor,Round,Composite Score,Verdict\n';
-      csvContent += reviews.map(r => 
+      csvContent += fetchedReviews.map(r => 
         `"${r.team.teamName}","${r.mentor.fullName}","${r.round.roundName}",${r.compositeScore},"${r.verdict}"`
       ).join('\n');
     }
     else if (type === 'results') {
-      const results = await prisma.result.findMany({
-        where: { eventId, isPublished: true },
-        include: { team: true },
-        orderBy: { finalPosition: 'asc' },
+      const resultList = await db.query.results.findMany({
+        where: and(eq(results.eventId, eventId), eq(results.isPublished, true)),
+        with: { team: { columns: { teamName: true, projectTitle: true } } },
+        orderBy: [asc(results.finalPosition)],
       });
       csvContent = 'Rank,Team,Project,Category,Prize\n';
-      csvContent += results.map(r => 
+      csvContent += resultList.map(r => 
         `${r.finalPosition || ''},"${r.team.teamName}","${r.team.projectTitle}","${r.awardType || ''}",`
       ).join('\n');
     } 

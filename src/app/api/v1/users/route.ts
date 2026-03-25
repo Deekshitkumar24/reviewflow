@@ -1,49 +1,51 @@
 export const runtime = 'nodejs';
 
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { users, roles } from '@/db/schema';
+import { eq, and, or, ilike, isNull, desc, count } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, parsePagination, paginationMeta, createAuditLog } from '@/lib/api-utils';
 import { createUserSchema } from '@/validators';
 import { hashPassword, generateTempPassword } from '@/lib/auth';
 
 // GET /api/v1/users — List users
 export async function GET(request: Request) {
-  return withAuth(request, async (user) => {
+  return withAuth(request, async () => {
     const url = new URL(request.url);
     const { page, limit, skip, q } = parsePagination(url);
-    const role = url.searchParams.get('role') || undefined;
-    const status = url.searchParams.get('status') || undefined;
+    const roleParam = url.searchParams.get('role') || undefined;
+    const statusParam = url.searchParams.get('status') || undefined;
 
-    const where: Record<string, unknown> = { deletedAt: null };
-    if (role) where.role = { name: role };
-    if (status) where.status = status;
+    const conditions = [isNull(users.deletedAt)];
+    
+    if (roleParam) {
+      const roleRecord = await db.query.roles.findFirst({ where: eq(roles.name, roleParam) });
+      if (roleRecord) conditions.push(eq(users.roleId, roleRecord.id));
+      else conditions.push(eq(users.roleId, '00000000-0000-0000-0000-000000000000')); // force empty
+    }
+    
+    if (statusParam) conditions.push(eq(users.status, statusParam));
+    
     if (q) {
-      where.OR = [
-        { fullName: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-      ];
+      conditions.push(or(
+        ilike(users.fullName, `%${q}%`),
+        ilike(users.email, `%${q}%`)
+      )!);
     }
 
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          phone: true,
-          status: true,
-          lastLoginAt: true,
-          createdAt: true,
-          role: { select: { name: true, displayName: true } },
-        },
+    const whereClause = and(...conditions);
+
+    const [usersList, totalObj] = await Promise.all([
+      db.query.users.findMany({
+        where: whereClause,
+        limit,
+        offset: skip,
+        orderBy: [desc(users.createdAt)],
+        with: { role: { columns: { name: true, displayName: true } } },
       }),
-      prisma.user.count({ where }),
+      db.select({ value: count() }).from(users).where(whereClause),
     ]);
 
-    const data = users.map((u: typeof users[number]) => ({
+    const data = usersList.map((u) => ({
       id: u.id,
       fullName: u.fullName,
       email: u.email,
@@ -55,7 +57,7 @@ export async function GET(request: Request) {
       createdAt: u.createdAt.toISOString(),
     }));
 
-    return successResponse(data, 200, { meta: paginationMeta(total, page, limit) });
+    return successResponse(data, 200, { meta: paginationMeta(totalObj[0].value, page, limit) });
   }, ['super_admin', 'admin']);
 }
 
@@ -67,14 +69,14 @@ export async function POST(request: Request) {
     const data = validation.data!;
 
     // Check email uniqueness
-    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    const existing = await db.query.users.findFirst({ where: eq(users.email, data.email.toLowerCase()) });
     if (existing) {
       return errorResponse('EMAIL_EXISTS', 'A user with this email already exists', 409);
     }
 
     // Find role
-    const role = await prisma.role.findUnique({ where: { name: data.role } });
-    if (!role) {
+    const roleRecord = await db.query.roles.findFirst({ where: eq(roles.name, data.role) });
+    if (!roleRecord) {
       return errorResponse('INVALID_ROLE', 'Role not found', 400);
     }
 
@@ -82,25 +84,17 @@ export async function POST(request: Request) {
     const tempPassword = generateTempPassword();
     const passwordHash = await hashPassword(tempPassword);
 
-    const user = await prisma.user.create({
-      data: {
-        roleId: role.id,
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone || null,
-        passwordHash,
-        mustChangePassword: true,
-        status: 'active',
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        phone: true,
-        status: true,
-        createdAt: true,
-      },
-    });
+    const insertedUsers = await db.insert(users).values({
+      roleId: roleRecord.id,
+      fullName: data.fullName,
+      email: data.email.toLowerCase(),
+      phone: data.phone || null,
+      passwordHash,
+      mustChangePassword: true,
+      status: 'active',
+    }).returning();
+
+    const user = insertedUsers[0];
 
     await createAuditLog({
       userId: authUser.sub,
@@ -110,7 +104,16 @@ export async function POST(request: Request) {
       newValues: { fullName: data.fullName, email: data.email, role: data.role },
     });
 
-    return successResponse({ ...user, tempPassword, role: data.role }, 201);
+    return successResponse({ 
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      status: user.status,
+      createdAt: user.createdAt,
+      tempPassword, 
+      role: data.role 
+    }, 201);
   }, ['super_admin', 'admin']);
 }
 
@@ -121,7 +124,7 @@ export async function DELETE(request: Request) {
     const id = url.searchParams.get('id');
     if (!id) return errorResponse('MISSING_ID', 'User ID is required', 400);
 
-    const user = await prisma.user.findUnique({ where: { id } });
+    const user = await db.query.users.findFirst({ where: eq(users.id, id) });
     if (!user) return errorResponse('NOT_FOUND', 'User not found', 404);
 
     // Prevent self-deletion
@@ -129,10 +132,9 @@ export async function DELETE(request: Request) {
       return errorResponse('FORBIDDEN', 'Cannot delete your own account', 403);
     }
 
-    await prisma.user.update({
-      where: { id },
-      data: { deletedAt: new Date(), status: 'inactive' },
-    });
+    await db.update(users)
+      .set({ deletedAt: new Date(), status: 'inactive' })
+      .where(eq(users.id, id));
 
     await createAuditLog({
       userId: authUser.sub,

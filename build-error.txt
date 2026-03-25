@@ -1,0 +1,83 @@
+﻿
+> reviewflow@0.1.0 build
+> next build
+
+Γû▓ Next.js 16.2.1 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 7.2s
+  Running TypeScript ...
+  Finished TypeScript in 8.4s ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/46) ...
+  Generating static pages using 15 workers (11/46) 
+  Generating static pages using 15 workers (22/46) 
+  Generating static pages using 15 workers (34/46) 
+Γ£ô Generating static pages using 15 workers (46/46) in 781ms
+  Finalizing page optimization ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ ╞Æ /api/v1/audit-logs
+Γö£ ╞Æ /api/v1/auth/change-password
+Γö£ ╞Æ /api/v1/auth/forgot-password
+Γö£ ╞Æ /api/v1/auth/login
+Γö£ ╞Æ /api/v1/auth/logout
+Γö£ ╞Æ /api/v1/auth/me
+Γö£ ╞Æ /api/v1/auth/refresh
+Γö£ ╞Æ /api/v1/auth/reset-password
+Γö£ ╞Æ /api/v1/dashboard/stats
+Γö£ ╞Æ /api/v1/events
+Γö£ ╞Æ /api/v1/events/[eventId]
+Γö£ ╞Æ /api/v1/lab-assignments
+Γö£ ╞Æ /api/v1/labs
+Γö£ ╞Æ /api/v1/labs/[labId]
+Γö£ ╞Æ /api/v1/live-monitor
+Γö£ ╞Æ /api/v1/mentor-assignments
+Γö£ ╞Æ /api/v1/reports/export
+Γö£ ╞Æ /api/v1/results
+Γö£ ╞Æ /api/v1/reviews
+Γö£ ╞Æ /api/v1/rounds/[roundId]
+Γö£ ╞Æ /api/v1/rounds/[roundId]/advance
+Γö£ ╞Æ /api/v1/teams
+Γö£ ╞Æ /api/v1/teams/[teamId]
+Γö£ ╞Æ /api/v1/teams/[teamId]/checkin
+Γö£ ╞Æ /api/v1/teams/import
+Γö£ ╞Æ /api/v1/users
+Γö£ ╞Æ /api/v1/users/[userId]
+Γö£ Γùï /audit-logs
+Γö£ Γùï /change-password
+Γö£ Γùï /coordinator/checkin
+Γö£ Γùï /coordinator/labs
+Γö£ Γùï /coordinator/profile
+Γö£ Γùï /dashboard
+Γö£ Γùï /events
+Γö£ ╞Æ /events/[eventId]
+Γö£ Γùï /events/new
+Γö£ Γùï /forgot-password
+Γö£ Γùï /labs
+Γö£ Γùï /live
+Γö£ Γùï /login
+Γö£ Γùï /mentor/dashboard
+Γö£ Γùï /mentor/labs
+Γö£ ╞Æ /mentor/labs/[labId]
+Γö£ Γùï /mentor/profile
+Γö£ ╞Æ /mentor/review/[teamId]
+Γö£ Γùï /mentor/reviews
+Γö£ Γùï /profile
+Γö£ ╞Æ /reports
+Γö£ Γùï /reset-password
+Γö£ Γùï /settings
+Γö£ Γùï /teams
+Γö£ ╞Æ /teams/[teamId]
+Γö£ Γùï /teams/import
+Γöö Γùï /users
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+

@@ -1,7 +1,9 @@
-import prisma from '@/lib/prisma';
-import { withAuth, successResponse, errorResponse, createAuditLog } from '@/lib/api-utils';
-
 export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { events, teams, teamMembers, importBatches } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
+import { withAuth, successResponse, errorResponse, createAuditLog } from '@/lib/api-utils';
 
 interface TeamRow {
   teamName: string;
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
     if (rows.length > 500) return errorResponse('TOO_MANY', 'Maximum 500 teams per import', 400);
 
     // Validate event exists
-    const event = await prisma.event.findFirst({ where: { id: eventId, deletedAt: null } });
+    const event = await db.query.events.findFirst({ where: and(eq(events.id, eventId), isNull(events.deletedAt)) });
     if (!event) return errorResponse('NOT_FOUND', 'Event not found', 404);
 
     const successRows: string[] = [];
@@ -52,25 +54,30 @@ export async function POST(request: Request) {
         if (!row.memberName?.trim()) throw new Error('memberName (leader) is required');
 
         // Build members array from flattened columns
-        const members = [
-          { fullName: row.memberName.trim(), email: row.memberEmail, phone: row.memberPhone, isLeader: true, academicYear: row.academicYear ? parseInt(row.academicYear) : null },
-          ...(row.memberName2 ? [{ fullName: row.memberName2.trim(), isLeader: false }] : []),
-          ...(row.memberName3 ? [{ fullName: row.memberName3.trim(), isLeader: false }] : []),
-          ...(row.memberName4 ? [{ fullName: row.memberName4.trim(), isLeader: false }] : []),
-        ].filter((m): m is NonNullable<typeof m> => Boolean(m.fullName));
+        const membersList = [
+          { fullName: row.memberName.trim(), email: row.memberEmail || null, phone: row.memberPhone || null, isLeader: true, academicYear: row.academicYear ? parseInt(row.academicYear) : null },
+          ...(row.memberName2 ? [{ fullName: row.memberName2.trim(), email: row.memberEmail2 || null, phone: null, isLeader: false, academicYear: null }] : []),
+          ...(row.memberName3 ? [{ fullName: row.memberName3.trim(), email: null, phone: null, isLeader: false, academicYear: null }] : []),
+          ...(row.memberName4 ? [{ fullName: row.memberName4.trim(), email: null, phone: null, isLeader: false, academicYear: null }] : []),
+        ].filter((m) => Boolean(m.fullName));
 
-        await prisma.team.create({
-          data: {
-            eventId,
-            teamName: row.teamName.trim(),
-            projectTitle: row.projectTitle.trim(),
-            projectDescription: row.projectDescription?.trim(),
-            domain: row.domain?.trim(),
-            department: row.department.trim(),
-            collegeName: row.collegeName.trim(),
-            githubUrl: row.githubUrl?.trim() || null,
-            members: { create: members },
-          },
+        await db.transaction(async (tx) => {
+            const teamInserts = await tx.insert(teams).values({
+                eventId,
+                teamName: row.teamName.trim(),
+                projectTitle: row.projectTitle.trim(),
+                projectDescription: row.projectDescription?.trim() || null,
+                domain: row.domain?.trim() || null,
+                department: row.department.trim(),
+                collegeName: row.collegeName.trim(),
+                githubUrl: row.githubUrl?.trim() || null,
+            }).returning();
+
+            const newTeam = teamInserts[0];
+
+            await tx.insert(teamMembers).values(
+                membersList.map(m => ({ ...m, teamId: newTeam.id }))
+            );
         });
 
         successRows.push(row.teamName);
@@ -79,17 +86,17 @@ export async function POST(request: Request) {
       }
     }
 
-    const batch = await prisma.importBatch.create({
-      data: {
-        eventId,
-        importedById: user.sub,
-        fileName: `import-${Date.now()}.csv`,
-        totalRows: rows.length,
-        successRows: successRows.length,
-        failedRows: errorRows.length,
-        errorsJson: errorRows as any,
-      },
-    });
+    const batchInserts = await db.insert(importBatches).values({
+      eventId,
+      importedById: user.sub,
+      fileName: `import-${Date.now()}.csv`,
+      totalRows: rows.length,
+      successRows: successRows.length,
+      failedRows: errorRows.length,
+      errorsJson: errorRows as any,
+    }).returning();
+
+    const batch = batchInserts[0];
 
     await createAuditLog({
       userId: user.sub,

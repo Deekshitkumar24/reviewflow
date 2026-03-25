@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { users, refreshTokens } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import {
   verifyPassword,
   generateAccessToken,
@@ -17,9 +19,9 @@ export async function POST(request: Request) {
   if (validation.error) return validation.error;
   const { email, password } = validation.data!;
 
-  const user = await prisma.user.findFirst({
-    where: { email: email.toLowerCase(), deletedAt: null },
-    include: { role: true },
+  const user = await db.query.users.findFirst({
+    where: (users, { eq, and, isNull }) => and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)),
+    with: { role: true },
   });
 
   if (!user) return errorResponse('INVALID_CREDENTIALS', 'Invalid email or password', 401);
@@ -35,27 +37,24 @@ export async function POST(request: Request) {
     const newCount = user.failedLoginCount + 1;
     const updateData: Record<string, unknown> = { failedLoginCount: newCount };
     if (newCount >= 10) updateData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
-    await prisma.user.update({ where: { id: user.id }, data: updateData });
+    await db.update(users).set(updateData).where(eq(users.id, user.id));
     return errorResponse('INVALID_CREDENTIALS', 'Invalid email or password', 401);
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { failedLoginCount: 0, lastLoginAt: new Date(), lockedUntil: null },
-  });
+  await db.update(users)
+    .set({ failedLoginCount: 0, lastLoginAt: new Date(), lockedUntil: null })
+    .where(eq(users.id, user.id));
 
   const roleName = user.role.name as 'super_admin' | 'admin' | 'mentor' | 'coordinator';
   const accessToken = await generateAccessToken({ id: user.id, role: roleName, email: user.email });
   const refreshToken = await generateRefreshToken({ id: user.id, role: roleName, email: user.email });
   const refreshHash = await hashPassword(refreshToken);
 
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: refreshHash,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      deviceInfo: request.headers.get('user-agent') || undefined,
-    },
+  await db.insert(refreshTokens).values({
+    userId: user.id,
+    tokenHash: refreshHash,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    deviceInfo: request.headers.get('user-agent') || undefined,
   });
 
   await createAuditLog({

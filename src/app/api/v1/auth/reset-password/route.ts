@@ -1,4 +1,6 @@
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { users, passwordResets, refreshTokens } from '@/db/schema';
+import { eq, and, isNull, gt, desc } from 'drizzle-orm';
 import { successResponse, errorResponse, validateBody } from '@/lib/api-utils';
 import { hashPassword, validatePasswordStrength } from '@/lib/auth';
 import { z } from 'zod';
@@ -23,20 +25,20 @@ export async function POST(request: Request) {
     return errorResponse('WEAK_PASSWORD', strength.errors.join('. '), 400);
   }
 
-  const user = await prisma.user.findFirst({
-    where: { email, deletedAt: null, status: 'active' },
+  const user = await db.query.users.findFirst({
+    where: (users, { eq, and, isNull }) => and(eq(users.email, email), isNull(users.deletedAt), eq(users.status, 'active')),
   });
   if (!user) return errorResponse('INVALID_TOKEN', 'Invalid or expired reset link', 400);
 
   // Find valid, unused reset tokens
-  const validResets = await prisma.passwordReset.findMany({
-    where: {
-      userId: user.id,
-      usedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 5,
+  const validResets = await db.query.passwordResets.findMany({
+    where: and(
+      eq(passwordResets.userId, user.id),
+      isNull(passwordResets.usedAt),
+      gt(passwordResets.expiresAt, new Date())
+    ),
+    orderBy: [desc(passwordResets.createdAt)],
+    limit: 5,
   });
 
   let matchedReset: { id: string } | null = null;
@@ -50,23 +52,26 @@ export async function POST(request: Request) {
   if (!matchedReset) return errorResponse('INVALID_TOKEN', 'Invalid or expired reset link', 400);
 
   // Mark token as used and update password
-  await prisma.$transaction([
-    prisma.passwordReset.update({ where: { id: matchedReset.id }, data: { usedAt: new Date() } }),
-    prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: await hashPassword(newPassword),
+  const newHash = await hashPassword(newPassword);
+  await db.transaction(async (tx) => {
+    await tx.update(passwordResets)
+      .set({ usedAt: new Date() })
+      .where(eq(passwordResets.id, matchedReset!.id));
+      
+    await tx.update(users)
+      .set({
+        passwordHash: newHash,
         mustChangePassword: false,
         failedLoginCount: 0,
         lockedUntil: null,
-      },
-    }),
+      })
+      .where(eq(users.id, user.id));
+
     // Revoke all refresh tokens for security
-    prisma.refreshToken.updateMany({
-      where: { userId: user.id, revokedAt: null },
-      data: { revokedAt: new Date() },
-    }),
-  ]);
+    await tx.update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(refreshTokens.userId, user.id), isNull(refreshTokens.revokedAt)));
+  });
 
   return successResponse({ message: 'Password reset successfully. Please log in with your new password.' });
 }

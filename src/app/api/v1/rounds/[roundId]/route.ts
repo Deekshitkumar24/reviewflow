@@ -1,8 +1,10 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { rounds } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const updateRoundSchema = z.object({
   status: z.enum(['pending', 'open', 'locked']).optional(),
@@ -13,14 +15,36 @@ const updateRoundSchema = z.object({
 export async function GET(request: Request, { params }: { params: Promise<{ roundId: string }> }) {
   return withAuth(request, async () => {
     const { roundId } = await params;
-    const round = await prisma.round.findUnique({
-      where: { id: roundId },
-      include: {
-        _count: { select: { labAssignments: true, reviews: true, mentorAssignments: true } },
+    
+    // First find the round
+    const roundRecord = await db.query.rounds.findFirst({
+      where: eq(rounds.id, roundId),
+      with: {
+        labAssignments: { columns: { id: true } },
+        reviews: { columns: { id: true } },
+        mentorAssignments: { columns: { id: true } },
       },
     });
-    if (!round) return errorResponse('NOT_FOUND', 'Round not found', 404);
-    return successResponse(round);
+
+    if (!roundRecord) return errorResponse('NOT_FOUND', 'Round not found', 404);
+
+    const data = {
+        id: roundRecord.id,
+        eventId: roundRecord.eventId,
+        roundName: roundRecord.roundName,
+        roundOrder: roundRecord.roundOrder,
+        status: roundRecord.status,
+        opensAt: roundRecord.opensAt,
+        lockedAt: roundRecord.lockedAt,
+        lockedById: roundRecord.lockedById,
+        _count: {
+            labAssignments: roundRecord.labAssignments.length,
+            reviews: roundRecord.reviews.length,
+            mentorAssignments: roundRecord.mentorAssignments.length,
+        }
+    };
+
+    return successResponse(data);
   });
 }
 
@@ -32,7 +56,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ro
     if (validation.error) return validation.error;
     const { status, roundName } = validation.data!;
 
-    const existing = await prisma.round.findUnique({ where: { id: roundId } });
+    const existing = await db.query.rounds.findFirst({ where: eq(rounds.id, roundId) });
     if (!existing) return errorResponse('NOT_FOUND', 'Round not found', 404);
 
     // State machine validation
@@ -54,7 +78,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ro
       }
     }
 
-    const round = await prisma.round.update({ where: { id: roundId }, data: updateData });
+    const updatedRecords = await db.update(rounds)
+        .set(updateData as any)
+        .where(eq(rounds.id, roundId))
+        .returning();
+
+    const round = updatedRecords[0];
+
     await createAuditLog({
       userId: user.sub,
       action: `round.${status ?? 'updated'}`,

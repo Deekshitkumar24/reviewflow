@@ -1,4 +1,6 @@
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { users, passwordResets } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { successResponse, errorResponse, validateBody } from '@/lib/api-utils';
 import { hashPassword } from '@/lib/auth';
 import { z } from 'zod';
@@ -17,8 +19,8 @@ export async function POST(request: Request) {
   const { email } = validation.data!;
 
   // Always return success to prevent email enumeration
-  const user = await prisma.user.findFirst({
-    where: { email, deletedAt: null, status: 'active' },
+  const user = await db.query.users.findFirst({
+    where: (users, { eq, and, isNull }) => and(eq(users.email, email), isNull(users.deletedAt), eq(users.status, 'active')),
   });
 
   if (!user) {
@@ -26,21 +28,18 @@ export async function POST(request: Request) {
   }
 
   // Invalidate any existing reset tokens for this user
-  await prisma.passwordReset.updateMany({
-    where: { userId: user.id, usedAt: null },
-    data: { usedAt: new Date() },
-  });
+  await db.update(passwordResets)
+    .set({ usedAt: new Date() })
+    .where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.usedAt)));
 
   // Generate a secure token
   const rawToken = crypto.randomBytes(32).toString('hex');
   const tokenHash = await hashPassword(rawToken);
 
-  await prisma.passwordReset.create({
-    data: {
-      userId: user.id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
-    },
+  await db.insert(passwordResets).values({
+    userId: user.id,
+    tokenHash,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
   });
 
   // In production: send email with `rawToken` via Resend/nodemailer

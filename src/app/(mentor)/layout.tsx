@@ -107,7 +107,7 @@ export default function MentorLayout({ children }: { children: React.ReactNode }
                 </Badge>
               )}
             </Button>
-            <Avatar className="h-8 w-8 cursor-pointer">
+            <Avatar className="h-8 w-8 cursor-pointer" onClick={() => router.push('/profile')} title="My profile">
               <AvatarFallback className="bg-[#1A56DB] text-white text-xs">{initials}</AvatarFallback>
             </Avatar>
             <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-gray-400 hover:text-red-500">

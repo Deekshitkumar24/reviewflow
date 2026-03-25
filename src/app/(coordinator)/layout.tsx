@@ -51,10 +51,10 @@ export default function CoordinatorLayout({ children }: { children: React.ReactN
             <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">Coordinator</span>
           </div>
           <div className="flex items-center gap-2">
-            <Avatar className="h-8 w-8">
+            <Avatar className="h-8 w-8 cursor-pointer" onClick={() => router.push('/profile')} title="My profile">
               <AvatarFallback className="bg-emerald-500 text-white text-xs">{initials}</AvatarFallback>
             </Avatar>
-            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-gray-400">
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="h-8 w-8 text-gray-400" title="Logout">
               <LogOut className="w-4 h-4" />
             </Button>
           </div>

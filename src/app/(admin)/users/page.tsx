@@ -172,8 +172,8 @@ export default function UsersPage() {
                       {user.lastLoginAt ? `Last login ${formatDistanceToNow(new Date(user.lastLoginAt), { addSuffix: true })}` : 'Never logged in'}
                     </div>
                     <DropdownMenu>
-                      <DropdownMenuTrigger>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0"><MoreHorizontal className="w-4 h-4" /></Button>
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" />}>
+                        <MoreHorizontal className="w-4 h-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleResetPassword(user.id, user.fullName)}>Reset Password</DropdownMenuItem>

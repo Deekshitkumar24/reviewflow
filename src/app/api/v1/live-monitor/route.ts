@@ -1,7 +1,9 @@
-import prisma from '@/lib/prisma';
-import { withAuth, successResponse } from '@/lib/api-utils';
-
 export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { labs, events, reviews } from '@/db/schema';
+import { eq, and, isNull, asc, count } from 'drizzle-orm';
+import { withAuth, successResponse } from '@/lib/api-utils';
 
 // GET /api/v1/live-monitor?eventId=...
 export async function GET(request: Request) {
@@ -9,47 +11,58 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const eventId = url.searchParams.get('eventId');
 
-    const where: Record<string, unknown> = { deletedAt: null };
-    if (eventId) where.eventId = eventId;
+    const conditions = [isNull(labs.deletedAt)];
+    if (eventId) conditions.push(eq(labs.eventId, eventId));
 
     // Fetch all labs for the event
-    const labs = await prisma.lab.findMany({
-      where,
-      include: {
+    const labList = await db.query.labs.findMany({
+      where: and(...conditions),
+      with: {
         labAssignments: {
-          include: {
-            team: { select: { id: true, teamName: true, attendanceStatus: true } },
-            round: { select: { roundName: true, roundOrder: true, status: true } },
+          with: {
+            team: { columns: { id: true, teamName: true, attendanceStatus: true } },
+            round: { columns: { roundName: true, roundOrder: true, status: true } },
           },
         },
         mentorAssignments: {
-          include: { mentor: { select: { fullName: true } } },
+          with: { mentor: { columns: { fullName: true } } },
         },
       },
     });
 
-    // For each lab, count reviews submitted in the active round
-    const eventData = eventId
-      ? await prisma.event.findFirst({
-          where: { id: eventId },
-          include: {
-            rounds: { where: { status: 'open' }, orderBy: { roundOrder: 'asc' }, take: 1 },
-            _count: { select: { teams: true } },
-          },
-        })
-      : null;
+    let eventData = null;
+    let activeRoundId = null;
 
-    const activeRoundId = eventData?.rounds[0]?.id;
+    if (eventId) {
+        eventData = await db.query.events.findFirst({
+            where: eq(events.id, eventId),
+            with: {
+                rounds: { 
+                    where: (r, { eq }) => eq(r.status, 'open'),
+                    orderBy: (r, { asc }) => [asc(r.roundOrder)],
+                    limit: 1
+                },
+                teams: { columns: { id: true } }
+            }
+        });
+        activeRoundId = eventData?.rounds[0]?.id || null;
+    }
 
     const labStats = await Promise.all(
-      labs.map(async (lab) => {
+      labList.map(async (lab) => {
         const assignedInActiveRound = lab.labAssignments.filter(
           (a) => !activeRoundId || a.roundId === activeRoundId
         );
         const teamIds = assignedInActiveRound.map((a) => a.teamId);
-        const reviewed = activeRoundId
-          ? await prisma.review.count({ where: { labId: lab.id, roundId: activeRoundId, isDraft: false } })
-          : 0;
+        
+        // Count reviews submitted inside this lab, round
+        let reviewed = 0;
+        if (activeRoundId) {
+            const reviewedQuery = await db.select({ value: count() }).from(reviews)
+                .where(and(eq(reviews.labId, lab.id), eq(reviews.roundId, activeRoundId), eq(reviews.isDraft, false)));
+            reviewed = reviewedQuery[0].value;
+        }
+
         const checkedIn = assignedInActiveRound.filter(
           (a) => a.team.attendanceStatus === 'checked_in'
         ).length;
@@ -80,7 +93,7 @@ export async function GET(request: Request) {
       })
     );
 
-    const totalTeams = eventData?._count.teams ?? labStats.reduce((s, l) => s + l.totalTeams, 0);
+    const totalTeams = eventData?.teams.length ?? labStats.reduce((s, l) => s + l.totalTeams, 0);
     const totalReviewed = labStats.reduce((s, l) => s + l.reviewed, 0);
     const totalCheckedIn = labStats.reduce((s, l) => s + l.checkedIn, 0);
 

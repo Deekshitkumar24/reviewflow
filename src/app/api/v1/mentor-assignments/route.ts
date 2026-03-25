@@ -1,8 +1,10 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { mentorAssignments, rounds } from '@/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const assignMentorSchema = z.object({
   mentorId: z.string().uuid(),
@@ -14,34 +16,65 @@ const assignMentorSchema = z.object({
 export async function GET(request: Request) {
   return withAuth(request, async (jwtUser) => {
     const url = new URL(request.url);
-    const roundId = url.searchParams.get('roundId') || undefined;
-    const labId = url.searchParams.get('labId') || undefined;
-    const mentorId = url.searchParams.get('mentorId') || undefined;
-    const eventId = url.searchParams.get('eventId') || undefined;
+    const roundIdParam = url.searchParams.get('roundId') || undefined;
+    const labIdParam = url.searchParams.get('labId') || undefined;
+    const mentorIdParam = url.searchParams.get('mentorId') || undefined;
+    const eventIdParam = url.searchParams.get('eventId') || undefined;
 
-    const where: Record<string, unknown> = {};
-    if (roundId) where.roundId = roundId;
-    if (labId) where.labId = labId;
-    if (eventId) where.round = { eventId };
+    const conditions = [];
+    if (roundIdParam) conditions.push(eq(mentorAssignments.roundId, roundIdParam));
+    if (labIdParam) conditions.push(eq(mentorAssignments.labId, labIdParam));
 
     // Mentors can only see their own assignments
     if (jwtUser.role === 'mentor') {
-      where.mentorId = jwtUser.sub;
-    } else if (mentorId) {
-      where.mentorId = mentorId;
+      conditions.push(eq(mentorAssignments.mentorId, jwtUser.sub));
+    } else if (mentorIdParam) {
+      conditions.push(eq(mentorAssignments.mentorId, mentorIdParam));
     }
 
-    const assignments = await prisma.mentorAssignment.findMany({
-      where,
-      orderBy: { assignedAt: 'desc' },
-      include: {
-        mentor: { select: { fullName: true, email: true } },
-        lab: { select: { labName: true, building: true, floor: true } },
-        round: { select: { roundName: true, roundOrder: true, status: true, eventId: true } },
-      },
-    });
+    let finalAssignments: any[] = [];
 
-    return successResponse(assignments.map((a) => ({
+    if (eventIdParam) {
+      // Manual join syntax requires retrieving explicitly linked data
+      const results = await db.select()
+        .from(mentorAssignments)
+        .leftJoin(rounds, eq(mentorAssignments.roundId, rounds.id))
+        .where(
+          and(
+            eq(rounds.eventId, eventIdParam),
+            ...(conditions)
+          )
+        )
+        .orderBy(desc(mentorAssignments.assignedAt));
+      
+      const ids = results.map(r => r.mentor_assignments.id);
+      
+      if (ids.length === 0) {
+          finalAssignments = [];
+      } else {
+          const fetched = await db.query.mentorAssignments.findMany({
+            orderBy: [desc(mentorAssignments.assignedAt)],
+            with: {
+              mentor: { columns: { fullName: true, email: true } },
+              lab: { columns: { labName: true, building: true, floor: true } },
+              round: { columns: { roundName: true, roundOrder: true, status: true, eventId: true } },
+            },
+          });
+          finalAssignments = fetched.filter(f => ids.includes(f.id));
+      }
+    } else {
+        finalAssignments = await db.query.mentorAssignments.findMany({
+            where: conditions.length > 0 ? and(...conditions) : undefined,
+            orderBy: [desc(mentorAssignments.assignedAt)],
+            with: {
+              mentor: { columns: { fullName: true, email: true } },
+              lab: { columns: { labName: true, building: true, floor: true } },
+              round: { columns: { roundName: true, roundOrder: true, status: true, eventId: true } },
+            },
+        });
+    }
+
+    return successResponse(finalAssignments.map((a) => ({
       id: a.id,
       mentorId: a.mentorId,
       mentorName: a.mentor.fullName,
@@ -67,14 +100,19 @@ export async function POST(request: Request) {
     if (validation.error) return validation.error;
     const { mentorId, labId, roundId } = validation.data!;
 
-    const existing = await prisma.mentorAssignment.findUnique({
-      where: { mentorId_labId_roundId: { mentorId, labId, roundId } },
+    const existing = await db.query.mentorAssignments.findFirst({
+      where: and(
+          eq(mentorAssignments.mentorId, mentorId),
+          eq(mentorAssignments.labId, labId),
+          eq(mentorAssignments.roundId, roundId)
+      )
     });
+
     if (existing) return errorResponse('CONFLICT', 'Mentor already assigned to this lab/round', 409);
 
-    const assignment = await prisma.mentorAssignment.create({
-      data: { mentorId, labId, roundId },
-    });
+    const insertedList = await db.insert(mentorAssignments).values({ mentorId, labId, roundId }).returning();
+    const assignment = insertedList[0];
+
     await createAuditLog({ userId: user.sub, action: 'mentor_assignment.created', entityType: 'mentor_assignment', entityId: assignment.id });
     return successResponse(assignment, 201);
   }, ['super_admin', 'admin']);
@@ -89,7 +127,14 @@ export async function DELETE(request: Request) {
     const roundId = url.searchParams.get('roundId');
     if (!mentorId || !labId || !roundId) return errorResponse('BAD_REQUEST', 'mentorId, labId, roundId required', 400);
 
-    await prisma.mentorAssignment.deleteMany({ where: { mentorId, labId, roundId } });
+    await db.delete(mentorAssignments).where(
+        and(
+            eq(mentorAssignments.mentorId, mentorId),
+            eq(mentorAssignments.labId, labId),
+            eq(mentorAssignments.roundId, roundId)
+        )
+    );
+
     return successResponse({ message: 'Assignment removed' });
   }, ['super_admin', 'admin']);
 }

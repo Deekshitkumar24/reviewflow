@@ -1,37 +1,54 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { teams } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 // GET /api/v1/teams/[teamId]
 export async function GET(request: Request, { params }: { params: Promise<{ teamId: string }> }) {
   return withAuth(request, async () => {
     const { teamId } = await params;
-    const team = await prisma.team.findFirst({
-      where: { id: teamId, deletedAt: null },
-      include: {
-        members: { orderBy: [{ isLeader: 'desc' }, { fullName: 'asc' }] },
+    
+    const team = await db.query.teams.findFirst({
+      where: and(eq(teams.id, teamId), isNull(teams.deletedAt)),
+      with: {
+        members: { 
+          orderBy: (members, { desc, asc }) => [desc(members.isLeader), asc(members.fullName)] 
+        },
         labAssignments: {
-          include: {
-            lab: { select: { labName: true, building: true } },
-            round: { select: { roundName: true, roundOrder: true, status: true } },
+          with: {
+            lab: { columns: { labName: true, building: true } },
+            round: { columns: { roundName: true, roundOrder: true, status: true } },
           },
-          orderBy: { round: { roundOrder: 'asc' } },
+          // Drizzle relations allows ordering by relation fields if registered appropriately,
+          // but Javascript sorting might be required depending on strict driver support
         },
         reviews: {
-          where: { isDraft: false },
-          include: {
-            mentor: { select: { fullName: true } },
-            round: { select: { roundName: true, roundOrder: true } },
-            suggestions: { include: { statusLogs: { orderBy: { createdAt: 'desc' } } } },
+          // manually filter out draft reviews later
+          with: {
+            mentor: { columns: { fullName: true } },
+            round: { columns: { roundName: true, roundOrder: true } },
+            suggestions: { 
+              with: { statusLogs: { orderBy: (logs, { desc }) => [desc(logs.createdAt)] } } 
+            },
           },
-          orderBy: { round: { roundOrder: 'asc' } },
         },
         result: true,
       },
     });
+
     if (!team) return errorResponse('NOT_FOUND', 'Team not found', 404);
+
+    // Javascript sorts/filters since nested `.where` inside `with` has limitations in drizzle mapping currently
+    if (team.labAssignments) {
+        team.labAssignments.sort((a, b) => a.round.roundOrder - b.round.roundOrder);
+    }
+    if (team.reviews) {
+        team.reviews = team.reviews.filter(r => !r.isDraft).sort((a, b) => a.round.roundOrder - b.round.roundOrder);
+    }
+
     return successResponse(team);
   });
 }
@@ -55,7 +72,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ te
     if (validation.error) return validation.error;
     const d = validation.data!;
 
-    const existing = await prisma.team.findFirst({ where: { id: teamId, deletedAt: null } });
+    const existing = await db.query.teams.findFirst({ where: and(eq(teams.id, teamId), isNull(teams.deletedAt)) });
     if (!existing) return errorResponse('NOT_FOUND', 'Team not found', 404);
 
     const updateData: Record<string, unknown> = {};
@@ -68,9 +85,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ te
     if (d.demoLink !== undefined) updateData.demoLink = d.demoLink;
     if (d.attendanceStatus !== undefined) updateData.attendanceStatus = d.attendanceStatus;
 
-    const team = await prisma.team.update({ where: { id: teamId }, data: updateData });
+    if (Object.keys(updateData).length > 0) {
+      await db.update(teams).set(updateData as any).where(eq(teams.id, teamId));
+    }
+    
+    const updatedTeam = await db.query.teams.findFirst({ where: eq(teams.id, teamId) });
+
     await createAuditLog({ userId: user.sub, action: 'team.updated', entityType: 'team', entityId: teamId });
-    return successResponse(team);
+    return successResponse(updatedTeam);
   }, ['super_admin', 'admin', 'coordinator']);
 }
 
@@ -78,10 +100,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ te
 export async function DELETE(request: Request, { params }: { params: Promise<{ teamId: string }> }) {
   return withAuth(request, async (user) => {
     const { teamId } = await params;
-    const existing = await prisma.team.findFirst({ where: { id: teamId, deletedAt: null } });
+    const existing = await db.query.teams.findFirst({ where: and(eq(teams.id, teamId), isNull(teams.deletedAt)) });
     if (!existing) return errorResponse('NOT_FOUND', 'Team not found', 404);
 
-    await prisma.team.update({ where: { id: teamId }, data: { deletedAt: new Date() } });
+    await db.update(teams).set({ deletedAt: new Date() }).where(eq(teams.id, teamId));
+
     await createAuditLog({ userId: user.sub, action: 'team.deleted', entityType: 'team', entityId: teamId });
     return successResponse({ message: 'Team removed' });
   }, ['super_admin', 'admin']);

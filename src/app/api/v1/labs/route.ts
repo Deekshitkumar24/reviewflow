@@ -1,8 +1,10 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { labs } from '@/db/schema';
+import { eq, and, isNull, count } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog, parsePagination, paginationMeta } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const createLabSchema = z.object({
   eventId: z.string().uuid(),
@@ -18,25 +20,28 @@ export async function GET(request: Request) {
   return withAuth(request, async () => {
     const url = new URL(request.url);
     const { page, limit, skip } = parsePagination(url);
-    const eventId = url.searchParams.get('eventId') || undefined;
+    const eventIdParam = url.searchParams.get('eventId') || undefined;
 
-    const where: Record<string, unknown> = { deletedAt: null };
-    if (eventId) where.eventId = eventId;
+    const conditions = [isNull(labs.deletedAt)];
+    if (eventIdParam) conditions.push(eq(labs.eventId, eventIdParam));
 
-    const [labs, total] = await Promise.all([
-      prisma.lab.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { labName: 'asc' },
-        include: {
-          _count: { select: { labAssignments: true, mentorAssignments: true } },
+    const whereClause = and(...conditions);
+
+    const [labList, totalObj] = await Promise.all([
+      db.query.labs.findMany({
+        where: whereClause,
+        limit,
+        offset: skip,
+        orderBy: (labs, { asc }) => [asc(labs.labName)],
+        with: {
+          labAssignments: { columns: { id: true } },
+          mentorAssignments: { columns: { id: true } },
         },
       }),
-      prisma.lab.count({ where }),
+      db.select({ value: count() }).from(labs).where(whereClause),
     ]);
 
-    const data = labs.map((l) => ({
+    const data = labList.map((l) => ({
       id: l.id,
       eventId: l.eventId,
       labName: l.labName,
@@ -45,12 +50,12 @@ export async function GET(request: Request) {
       capacity: l.capacity,
       status: l.status,
       notes: l.notes,
-      teamCount: l._count.labAssignments,
-      mentorCount: l._count.mentorAssignments,
+      teamCount: l.labAssignments.length,
+      mentorCount: l.mentorAssignments.length,
       createdAt: l.createdAt.toISOString(),
     }));
 
-    return successResponse(data, 200, { meta: paginationMeta(total, page, limit) });
+    return successResponse(data, 200, { meta: paginationMeta(totalObj[0].value, page, limit) });
   });
 }
 
@@ -61,17 +66,17 @@ export async function POST(request: Request) {
     if (validation.error) return validation.error;
     const data = validation.data!;
 
-    const lab = await prisma.lab.create({
-      data: {
-        eventId: data.eventId,
-        labName: data.labName,
-        building: data.building,
-        floor: data.floor,
-        capacity: data.capacity,
-        notes: data.notes,
-        status: 'active',
-      },
-    });
+    const insertedList = await db.insert(labs).values({
+      eventId: data.eventId,
+      labName: data.labName,
+      building: data.building || null,
+      floor: data.floor || null,
+      capacity: data.capacity,
+      notes: data.notes || null,
+      status: 'active',
+    }).returning();
+    
+    const lab = insertedList[0];
 
     await createAuditLog({ userId: user.sub, action: 'lab.created', entityType: 'lab', entityId: lab.id, newValues: { labName: lab.labName } });
     return successResponse(lab, 201);

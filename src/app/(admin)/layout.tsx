@@ -23,6 +23,7 @@ import {
   Activity,
   BarChart2,
   Trophy,
+  UserCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { href: '/teams', label: 'Teams', icon: Users2 },
   { href: '/labs', label: 'Labs', icon: FlaskConical },
   { href: '/users', label: 'Users', icon: Users },
+  { href: '/results', label: 'Results', icon: Trophy },
   { href: '/live', label: 'Live Monitor', icon: Activity },
   { href: '/reports', label: 'Reports', icon: BarChart2 },
   { href: '/audit-logs', label: 'Audit Logs', icon: FileText },
@@ -215,19 +217,35 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
             {/* User Menu */}
             <div className="flex items-center gap-2.5">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-[#1A56DB] text-white text-xs font-medium">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="hidden sm:block">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight">
-                  {user.fullName}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                  {user.role.replace('_', ' ')}
-                </p>
-              </div>
+              <button
+                onClick={() => router.push('/profile')}
+                className="flex items-center gap-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 px-2 py-1 transition-colors"
+                title="View profile"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-[#1A56DB] text-white text-xs font-medium">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="hidden sm:block text-left">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight">
+                    {user.fullName}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                    {user.role.replace('_', ' ')}
+                  </p>
+                </div>
+              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push('/profile')}
+                className="h-8 w-8 text-gray-400 hover:text-[#1A56DB]"
+                aria-label="My profile"
+                title="My profile"
+              >
+                <UserCircle className="w-4 h-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

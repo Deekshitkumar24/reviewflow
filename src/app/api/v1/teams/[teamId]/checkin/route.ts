@@ -1,8 +1,10 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { teams } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const checkinSchema = z.object({
   action: z.enum(['check_in', 'no_show', 'undo']),
@@ -16,7 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tea
     if (validation.error) return validation.error;
     const { action } = validation.data!;
 
-    const team = await prisma.team.findFirst({ where: { id: teamId, deletedAt: null } });
+    const team = await db.query.teams.findFirst({ where: and(eq(teams.id, teamId), isNull(teams.deletedAt)) });
     if (!team) return errorResponse('NOT_FOUND', 'Team not found', 404);
 
     let attendanceStatus: string;
@@ -33,14 +35,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ tea
       attendanceStatus = 'registered';
     }
 
-    const updated = await prisma.team.update({
-      where: { id: teamId },
-      data: {
-        attendanceStatus,
-        ...(checkedInAt ? { checkedInAt, checkedInById } : {}),
-        ...(action === 'undo' ? { checkedInAt: null, checkedInById: null } : {}),
-      },
-    });
+    const updatedList = await db.update(teams).set({
+      attendanceStatus,
+      ...(checkedInAt ? { checkedInAt, checkedInById } : {}),
+      ...(action === 'undo' ? { checkedInAt: null, checkedInById: null } : {}),
+    } as any).where(eq(teams.id, teamId)).returning();
+
+    const updated = updatedList[0];
 
     await createAuditLog({
       userId: user.sub,

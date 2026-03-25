@@ -1,9 +1,11 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { users } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { hashPassword, generateTempPassword } from '@/lib/auth';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const updateUserSchema = z.object({
   fullName: z.string().min(1).max(120).optional(),
@@ -21,7 +23,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ us
     if (validation.error) return validation.error;
     const { fullName, phone, status, roleId, resetPassword } = validation.data!;
 
-    const existing = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
+    const existing = await db.query.users.findFirst({ 
+      where: (users, { eq, and, isNull }) => and(eq(users.id, userId), isNull(users.deletedAt)) 
+    });
+    
     if (!existing) return errorResponse('NOT_FOUND', 'User not found', 404);
 
     const updateData: Record<string, unknown> = {};
@@ -37,7 +42,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ us
       updateData.mustChangePassword = true;
     }
 
-    const updated = await prisma.user.update({ where: { id: userId }, data: updateData });
+    const updatedList = await db.update(users)
+      .set(updateData as any)
+      .where(eq(users.id, userId))
+      .returning();
+
+    const updated = updatedList[0];
+
     await createAuditLog({
       userId: user.sub,
       action: 'user.updated',

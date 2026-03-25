@@ -1,5 +1,7 @@
 import { Metadata } from 'next';
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { reviews, teams, labs, suggestions, suggestionStatusLogs } from '@/db/schema';
+import { isNull, eq } from 'drizzle-orm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnalyticsCharts } from './components/AnalyticsCharts';
 import { Download, Activity, CheckCircle, Clock } from 'lucide-react';
@@ -16,26 +18,34 @@ export const metadata: Metadata = {
 
 
 async function getAnalyticsData() {
-  const [reviews, teamsCount, labsCount, suggestions, statusLogs] = await Promise.all([
-    prisma.review.findMany({
-      include: { round: true, lab: true },
-      where: { isDraft: false }
+  const [reviewsList, teamsList, labsList, suggestionsList, statusLogsList] = await Promise.all([
+    db.query.reviews.findMany({
+      where: eq(reviews.isDraft, false),
+      with: { round: true, lab: true }
     }),
-    prisma.team.count({ where: { deletedAt: null } }),
-    prisma.lab.count({ where: { deletedAt: null } }),
-    prisma.suggestion.findMany(),
-    prisma.suggestionStatusLog.findMany({ include: { suggestion: { include: { review: { include: { team: true } } } }, round: true } })
+    db.query.teams.findMany({ where: isNull(teams.deletedAt) }),
+    db.query.labs.findMany({ where: isNull(labs.deletedAt) }),
+    db.query.suggestions.findMany(),
+    db.query.suggestionStatusLogs.findMany({ 
+        with: { 
+            suggestion: { with: { review: { with: { team: true } } } }, 
+            round: true 
+        } 
+    })
   ]);
 
+  const teamsCount = teamsList.length;
+  const labsCount = labsList.length;
+
   // Transform reviews for charts
-  const verdicts = reviews.reduce((acc, r) => {
+  const verdicts = reviewsList.reduce((acc, r) => {
     acc[r.verdict] = (acc[r.verdict] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   const verdictData = Object.entries(verdicts).map(([name, value]) => ({ name, value }));
 
-  const labProgress = reviews.reduce((acc, r) => {
+  const labProgress = reviewsList.reduce((acc, r) => {
     const labName = r.lab?.labName || 'Unknown';
     acc[labName] = (acc[labName] || 0) + 1;
     return acc;
@@ -43,7 +53,7 @@ async function getAnalyticsData() {
 
   const labData = Object.entries(labProgress).map(([name, completed]) => ({ name, completed }));
 
-  const roundScores = reviews.reduce((acc, r) => {
+  const roundScores = reviewsList.reduce((acc, r) => {
     const roundName = r.round.roundName;
     if (!acc[roundName]) {
       acc[roundName] = { total: 0, count: 0 };
@@ -60,14 +70,14 @@ async function getAnalyticsData() {
 
   // Suggestion Compliance Data
   const compliance = {
-    completed: statusLogs.filter(s => s.status === 'completed').length,
-    partial: statusLogs.filter(s => s.status === 'partial').length,
-    notDone: statusLogs.filter(s => s.status === 'not_done').length,
-    total: suggestions.length,
-    pending: suggestions.length - statusLogs.length
+    completed: statusLogsList.filter(s => s.status === 'completed').length,
+    partial: statusLogsList.filter(s => s.status === 'partial').length,
+    notDone: statusLogsList.filter(s => s.status === 'not_done').length,
+    total: suggestionsList.length,
+    pending: suggestionsList.length - statusLogsList.length
   };
 
-  const topUnresolved = statusLogs
+  const topUnresolved = statusLogsList
     .filter(s => s.status === 'not_done')
     .slice(0, 5)
     .map(s => ({
@@ -77,7 +87,7 @@ async function getAnalyticsData() {
       round: s.round.roundName
     }));
 
-  return { verdictData, labData, scoreData, stats: { teams: teamsCount, labs: labsCount, reviews: reviews.length }, compliance, topUnresolved };
+  return { verdictData, labData, scoreData, stats: { teams: teamsCount, labs: labsCount, reviews: reviewsList.length }, compliance, topUnresolved };
 }
 
 export default async function ReportsPage() {

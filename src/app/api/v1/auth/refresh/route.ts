@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { db } from '@/db';
+import { users, refreshTokens } from '@/db/schema';
+import { eq, and, isNull, gt, desc } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import {
   verifyRefreshTokenJWT,
@@ -23,18 +25,22 @@ export async function POST() {
     return res;
   }
 
-  const user = await prisma.user.findFirst({
-    where: { id: payload.sub, deletedAt: null, status: 'active' },
-    include: { role: true },
+  const user = await db.query.users.findFirst({
+    where: (users, { eq, and, isNull }) => and(eq(users.id, payload.sub), isNull(users.deletedAt), eq(users.status, 'active')),
+    with: { role: true },
   });
 
   if (!user) return errorResponse('USER_NOT_FOUND', 'User not found', 401);
 
   // Validate stored refresh token hash
-  const storedTokens = await prisma.refreshToken.findMany({
-    where: { userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: 'desc' },
-    take: 5,
+  const storedTokens = await db.query.refreshTokens.findMany({
+    where: and(
+      eq(refreshTokens.userId, user.id),
+      isNull(refreshTokens.revokedAt),
+      gt(refreshTokens.expiresAt, new Date())
+    ),
+    orderBy: [desc(refreshTokens.createdAt)],
+    limit: 5,
   });
 
   let matchedTokenId: string | null = null;
@@ -48,18 +54,18 @@ export async function POST() {
   if (!matchedTokenId) return errorResponse('INVALID_REFRESH_TOKEN', 'Refresh token not recognized', 401);
 
   // Rotate: revoke old, issue new
-  await prisma.refreshToken.update({ where: { id: matchedTokenId }, data: { revokedAt: new Date() } });
+  await db.update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(eq(refreshTokens.id, matchedTokenId));
 
   const roleName = user.role.name as 'super_admin' | 'admin' | 'mentor' | 'coordinator';
   const newAccessToken = await generateAccessToken({ id: user.id, role: roleName, email: user.email });
   const newRefreshToken = await generateRefreshToken({ id: user.id, role: roleName, email: user.email });
 
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: await hashPassword(newRefreshToken),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
+  await db.insert(refreshTokens).values({
+    userId: user.id,
+    tokenHash: await hashPassword(newRefreshToken),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   });
 
   const res = NextResponse.json({

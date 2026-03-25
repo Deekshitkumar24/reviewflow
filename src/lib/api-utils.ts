@@ -94,7 +94,7 @@ export async function createAuditLog(params: {
   ipAddress?: string;
   userAgent?: string;
 }) {
-  // Dynamic import to avoid circular dependency
-  const { default: prisma } = await import('./prisma');
-  await prisma.auditLog.create({ data: params as any });
+  const { db } = await import('@/db');
+  const { auditLogs } = await import('@/db/schema');
+  await db.insert(auditLogs).values(params as any);
 }

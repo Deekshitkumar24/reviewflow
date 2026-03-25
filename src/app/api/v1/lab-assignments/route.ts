@@ -1,8 +1,10 @@
-import prisma from '@/lib/prisma';
+export const runtime = 'nodejs';
+
+import { db } from '@/db';
+import { labAssignments, rounds } from '@/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
-
-export const runtime = 'nodejs';
 
 const assignSchema = z.object({
   teamId: z.string().uuid(),
@@ -14,26 +16,64 @@ const assignSchema = z.object({
 export async function GET(request: Request) {
   return withAuth(request, async () => {
     const url = new URL(request.url);
-    const roundId = url.searchParams.get('roundId') || undefined;
-    const labId = url.searchParams.get('labId') || undefined;
-    const eventId = url.searchParams.get('eventId') || undefined;
+    const roundIdParam = url.searchParams.get('roundId') || undefined;
+    const labIdParam = url.searchParams.get('labId') || undefined;
+    const eventIdParam = url.searchParams.get('eventId') || undefined;
 
-    const where: Record<string, unknown> = {};
-    if (roundId) where.roundId = roundId;
-    if (labId) where.labId = labId;
-    if (eventId) where.round = { eventId };
+    const conditions = [];
+    if (roundIdParam) conditions.push(eq(labAssignments.roundId, roundIdParam));
+    if (labIdParam) conditions.push(eq(labAssignments.labId, labIdParam));
+    
+    // We cannot easily do relation-based filtering with simple where clauses in findMany 
+    // when using relational mapping without a native join. Since this is an admin dashboard only:
+    let finalAssignments: any[] = [];
 
-    const assignments = await prisma.labAssignment.findMany({
-      where,
-      orderBy: { assignedAt: 'desc' },
-      include: {
-        team: { select: { teamName: true, attendanceStatus: true } },
-        lab: { select: { labName: true, building: true } },
-        round: { select: { roundName: true, roundOrder: true, status: true } },
-      },
-    });
+    if (eventIdParam) {
+      // Manual join syntax required for filtering by a relation's property
+      const results = await db.select()
+        .from(labAssignments)
+        .leftJoin(rounds, eq(labAssignments.roundId, rounds.id))
+        .where(
+          and(
+            eq(rounds.eventId, eventIdParam),
+            ...(conditions)
+          )
+        )
+        .orderBy(desc(labAssignments.assignedAt));
+      
+      // Need to re-query with relations for the full payload, or populate it manually.
+      // Easiest is to pluck IDs and re-query standard relational.
+      const ids = results.map(r => r.lab_assignments.id);
+      
+      if (ids.length === 0) {
+          finalAssignments = [];
+      } else {
+          // Fallback manual query for these specific IDs
+          // Not the most performant, but safe for admin listings up to ~1000 assignments per event.
+          const fetched = await db.query.labAssignments.findMany({
+            orderBy: [desc(labAssignments.assignedAt)],
+            with: {
+              team: { columns: { teamName: true, attendanceStatus: true } },
+              lab: { columns: { labName: true, building: true } },
+              round: { columns: { roundName: true, roundOrder: true, status: true } },
+            },
+          });
+          // Memory filter since IN operator mapping inside query builder can be verbose dynamically
+          finalAssignments = fetched.filter(f => ids.includes(f.id));
+      }
+    } else {
+        finalAssignments = await db.query.labAssignments.findMany({
+            where: conditions.length > 0 ? and(...conditions) : undefined,
+            orderBy: [desc(labAssignments.assignedAt)],
+            with: {
+              team: { columns: { teamName: true, attendanceStatus: true } },
+              lab: { columns: { labName: true, building: true } },
+              round: { columns: { roundName: true, roundOrder: true, status: true } },
+            },
+        });
+    }
 
-    return successResponse(assignments.map((a) => ({
+    return successResponse(finalAssignments.map((a) => ({
       id: a.id,
       teamId: a.teamId,
       teamName: a.team.teamName,
@@ -58,21 +98,32 @@ export async function POST(request: Request) {
     const { teamId, labId, roundId } = validation.data!;
 
     // Check for existing assignment in this round
-    const existing = await prisma.labAssignment.findUnique({
-      where: { teamId_roundId: { teamId, roundId } },
+    const existing = await db.query.labAssignments.findFirst({
+      where: and(eq(labAssignments.teamId, teamId), eq(labAssignments.roundId, roundId))
     });
+
     if (existing) {
       // Update to new lab
-      const updated = await prisma.labAssignment.update({
-        where: { teamId_roundId: { teamId, roundId } },
-        data: { labId, assignedById: user.sub, assignedAt: new Date() },
-      });
-      return successResponse(updated);
+      const updatedList = await db.update(labAssignments).set({
+        labId,
+        assignedById: user.sub,
+        assignedAt: new Date(),
+      }).where(
+        and(eq(labAssignments.teamId, teamId), eq(labAssignments.roundId, roundId))
+      ).returning();
+
+      return successResponse(updatedList[0]);
     }
 
-    const assignment = await prisma.labAssignment.create({
-      data: { teamId, labId, roundId, assignedById: user.sub },
-    });
+    const insertedList = await db.insert(labAssignments).values({
+      teamId,
+      labId,
+      roundId,
+      assignedById: user.sub,
+    }).returning();
+    
+    const assignment = insertedList[0];
+
     await createAuditLog({ userId: user.sub, action: 'lab_assignment.created', entityType: 'lab_assignment', entityId: assignment.id });
     return successResponse(assignment, 201);
   }, ['super_admin', 'admin', 'coordinator']);
@@ -86,7 +137,10 @@ export async function DELETE(request: Request) {
     const roundId = url.searchParams.get('roundId');
     if (!teamId || !roundId) return errorResponse('BAD_REQUEST', 'teamId and roundId required', 400);
 
-    await prisma.labAssignment.deleteMany({ where: { teamId, roundId } });
+    await db.delete(labAssignments).where(
+        and(eq(labAssignments.teamId, teamId), eq(labAssignments.roundId, roundId))
+    );
+    
     await createAuditLog({ userId: user.sub, action: 'lab_assignment.deleted', entityType: 'lab_assignment' });
     return successResponse({ message: 'Assignment removed' });
   }, ['super_admin', 'admin']);
