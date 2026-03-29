@@ -24,3 +24,12 @@ export const mentorAssignments = pgTable("mentor_assignments", {
 }, (table) => [
   unique("mentor_assignments_mentor_id_lab_id_round_id_key").on(table.mentorId, table.labId, table.roundId),
 ]);
+
+export const coordinatorAssignments = pgTable("coordinator_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  coordinatorId: uuid("coordinator_id").notNull().references(() => users.id),
+  labId: uuid("lab_id").notNull().references(() => labs.id),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+}, (table) => [
+  unique("coordinator_assignments_coordinator_id_lab_id_key").on(table.coordinatorId, table.labId),
+]);

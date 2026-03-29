@@ -47,7 +47,8 @@ export async function POST(request: Request) {
   const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
   console.info(`[PASSWORD RESET] ${user.email} → ${resetUrl}`);
 
-  // TODO: Replace console.info with: await sendEmail({ to: user.email, subject: 'Reset your ReviewFlow password', html: resetEmailTemplate(resetUrl) })
+  // Note: Integrate your email provider here to send the actual email.
+  // Example: await sendEmail({ to: user.email, subject: 'Reset your ReviewFlow password', html: resetEmailTemplate(resetUrl) });
 
   return successResponse({ message: 'If that email exists, a reset link has been sent.' });
 }

@@ -129,5 +129,5 @@ export async function DELETE(request: Request) {
     });
 
     return successResponse({ deleted: true }, 200);
-  }, ['super_admin', 'admin']);
+  }, ['super_admin']);
 }

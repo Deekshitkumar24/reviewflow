@@ -359,3 +359,134 @@ export const ATTENDANCE_CONFIG = {
   disqualified: { color: '#7E3AF2', bg: '#F5F3FF', label: 'Disqualified' },
   withdrawn:    { color: '#D97706', bg: '#FFFBEB', label: 'Withdrawn' },
 } as const;
+
+// ═══════════════════════════════════════
+// ReviewFlow v4 — New Types
+// ═══════════════════════════════════════
+
+// Participation
+export type ParticipationType = 'solo' | 'duo' | 'team';
+
+// Evaluation status (set by mentor)
+export type EvaluationStatus = 'not_evaluated' | 'under_evaluation' | 'evaluated' | 're_evaluation_required';
+
+export const EVALUATION_STATUS_CONFIG = {
+  not_evaluated:           { color: '#6B7280', bg: '#F9FAFB', label: 'Not Evaluated', icon: '⬜' },
+  under_evaluation:        { color: '#D97706', bg: '#FFFBEB', label: 'Under Evaluation', icon: '🟡' },
+  evaluated:               { color: '#0E9F6E', bg: '#F0FFF4', label: 'Evaluated', icon: '✅' },
+  re_evaluation_required:  { color: '#DC2626', bg: '#FEF2F2', label: 'Re-evaluation Required', icon: '🔴' },
+} as const;
+
+// Readiness
+export interface TeamReadiness {
+  isProjectReady: boolean;
+  isPptReady: boolean;
+  isDemoReady: boolean;
+  isFinalSubmissionReady: boolean;
+  readinessRemarks?: string | null;
+}
+
+// Student Auth
+export interface StudentAuthUser {
+  teamId: string;
+  teamName: string;
+  loginEmail: string;
+  eventId: string;
+  labId?: string | null;
+}
+
+export interface StudentLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface StudentLoginResponse {
+  accessToken: string;
+  team: StudentAuthUser;
+}
+
+// Issues
+export type IssueCategory =
+  | 'network_issue'
+  | 'no_coordinator_support'
+  | 'no_mentor_support'
+  | 'system_login_issue'
+  | 'lab_infrastructure_issue'
+  | 'ppt_issue'
+  | 'evaluation_delay'
+  | 'other';
+
+export type IssueStatus = 'open' | 'in_progress' | 'resolved';
+
+export const ISSUE_CATEGORY_CONFIG: Record<IssueCategory, { label: string }> = {
+  network_issue:           { label: 'Network Issue' },
+  no_coordinator_support:  { label: 'No Coordinator Support' },
+  no_mentor_support:       { label: 'No Mentor Support' },
+  system_login_issue:      { label: 'System / Login Issue' },
+  lab_infrastructure_issue:{ label: 'Lab Infrastructure Issue' },
+  ppt_issue:               { label: 'PPT Issue' },
+  evaluation_delay:        { label: 'Evaluation Delay' },
+  other:                   { label: 'Other' },
+};
+
+export const ISSUE_STATUS_CONFIG = {
+  open:        { color: '#DC2626', bg: '#FEF2F2', label: 'Open' },
+  in_progress: { color: '#D97706', bg: '#FFFBEB', label: 'In Progress' },
+  resolved:    { color: '#0E9F6E', bg: '#F0FFF4', label: 'Resolved' },
+} as const;
+
+export interface IssueSummary {
+  id: string;
+  teamId: string;
+  teamName: string;
+  eventId: string;
+  labId?: string | null;
+  labName?: string | null;
+  category: IssueCategory;
+  description: string;
+  status: IssueStatus;
+  resolutionNote?: string | null;
+  resolvedById?: string | null;
+  resolvedByName?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreateIssueRequest {
+  category: IssueCategory;
+  description: string;
+}
+
+// Attendance
+export type AttendanceSlotStatus = 'upcoming' | 'open' | 'reminder_sent' | 'grace_period' | 'missed' | 'completed';
+
+export const ATTENDANCE_SLOT_STATUS_CONFIG = {
+  upcoming:       { color: '#6B7280', bg: '#F9FAFB', label: 'Upcoming' },
+  open:           { color: '#1A56DB', bg: '#EFF6FF', label: 'Open' },
+  reminder_sent:  { color: '#D97706', bg: '#FFFBEB', label: 'Reminder Sent' },
+  grace_period:   { color: '#F59E0B', bg: '#FFFBEB', label: 'Grace Period' },
+  missed:         { color: '#DC2626', bg: '#FEF2F2', label: 'Missed' },
+  completed:      { color: '#0E9F6E', bg: '#F0FFF4', label: 'Completed' },
+} as const;
+
+export interface AttendanceSlotSummary {
+  id: string;
+  eventId: string;
+  slotDate: string;
+  slotNumber: number;
+  slotName: string;
+  startTime: string;
+  dueTime: string;
+  gracePeriodMinutes: number;
+  status: AttendanceSlotStatus;
+}
+
+export interface MemberAttendanceRecord {
+  memberId: string;
+  memberName: string;
+  rollNumber?: string | null;
+  isPresent: boolean;
+  teamId: string;
+  teamName: string;
+}
+

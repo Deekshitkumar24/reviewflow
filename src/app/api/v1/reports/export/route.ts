@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
       csvContent = 'Team,Mentor,Round,Composite Score,Verdict\n';
       csvContent += fetchedReviews.map(r => 
-        `"${r.team.teamName}","${r.mentor.fullName}","${r.round.roundName}",${r.compositeScore},"${r.verdict}"`
+        `"${r.team?.teamName || 'Unknown'}","${r.mentor?.fullName || 'Unknown'}","${r.round?.roundName || 'Unknown'}",${r.compositeScore},"${r.verdict}"`
       ).join('\n');
     }
     else if (type === 'results') {
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
       });
       csvContent = 'Rank,Team,Project,Category,Prize\n';
       csvContent += resultList.map(r => 
-        `${r.finalPosition || ''},"${r.team.teamName}","${r.team.projectTitle}","${r.awardType || ''}",`
+        `${r.finalPosition || ''},"${r.team?.teamName || 'Unknown'}","${r.team?.projectTitle || 'Unknown'}","${r.awardType || ''}",`
       ).join('\n');
     } 
     else {

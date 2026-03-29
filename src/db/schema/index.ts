@@ -5,6 +5,9 @@ import * as teams from "./teams";
 import * as assignments from "./assignments";
 import * as reviews from "./reviews";
 import * as results from "./results";
+import * as studentAuth from "./student-auth";
+import * as issuesModule from "./issues";
+import * as attendanceModule from "./attendance";
 
 export * from "./auth";
 export * from "./events";
@@ -12,6 +15,9 @@ export * from "./teams";
 export * from "./assignments";
 export * from "./reviews";
 export * from "./results";
+export * from "./student-auth";
+export * from "./issues";
+export * from "./attendance";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RELATIONS (Centralized to avoid circular dependencies)
@@ -35,6 +41,7 @@ export const usersRelations = relations(auth.users, ({ one, many }) => ({
   declaredResults: many(results.results),
   importBatches: many(teams.importBatches),
   reviews: many(reviews.reviews),
+  coordinatorAssignments: many(assignments.coordinatorAssignments),
 }));
 
 export const eventsRelations = relations(events.events, ({ one, many }) => ({
@@ -45,6 +52,8 @@ export const eventsRelations = relations(events.events, ({ one, many }) => ({
   results: many(results.results),
   eventSettings: many(events.eventSettings),
   importBatches: many(teams.importBatches),
+  issues: many(issuesModule.issues),
+  attendanceSlots: many(attendanceModule.attendanceSlots),
 }));
 
 export const roundsRelations = relations(events.rounds, ({ one, many }) => ({
@@ -61,19 +70,29 @@ export const labsRelations = relations(events.labs, ({ one, many }) => ({
   labAssignments: many(assignments.labAssignments),
   mentorAssignments: many(assignments.mentorAssignments),
   reviews: many(reviews.reviews),
+  teams: many(teams.teams),
+  issues: many(issuesModule.issues),
+  labAttendanceSubmissions: many(attendanceModule.labAttendanceSubmissions),
+  coordinatorAssignments: many(assignments.coordinatorAssignments),
 }));
 
 export const teamsRelations = relations(teams.teams, ({ one, many }) => ({
   event: one(events.events, { fields: [teams.teams.eventId], references: [events.events.id] }),
+  lab: one(events.labs, { fields: [teams.teams.labId], references: [events.labs.id] }),
   checkedInBy: one(auth.users, { fields: [teams.teams.checkedInById], references: [auth.users.id] }),
+  registeredBy: one(auth.users, { fields: [teams.teams.registeredById], references: [auth.users.id] }),
   members: many(teams.teamMembers),
   labAssignments: many(assignments.labAssignments),
   reviews: many(reviews.reviews),
   result: one(results.results, { fields: [teams.teams.id], references: [results.results.teamId] }),
+  studentAuth: one(studentAuth.studentTeamAuth, { fields: [teams.teams.id], references: [studentAuth.studentTeamAuth.teamId] }),
+  issues: many(issuesModule.issues),
+  memberAttendance: many(attendanceModule.memberAttendance),
 }));
 
-export const teamMembersRelations = relations(teams.teamMembers, ({ one }) => ({
+export const teamMembersRelations = relations(teams.teamMembers, ({ one, many }) => ({
   team: one(teams.teams, { fields: [teams.teamMembers.teamId], references: [teams.teams.id] }),
+  attendance: many(attendanceModule.memberAttendance),
 }));
 
 export const importBatchesRelations = relations(teams.importBatches, ({ one }) => ({
@@ -92,6 +111,11 @@ export const mentorAssignmentsRelations = relations(assignments.mentorAssignment
   mentor: one(auth.users, { fields: [assignments.mentorAssignments.mentorId], references: [auth.users.id] }),
   lab: one(events.labs, { fields: [assignments.mentorAssignments.labId], references: [events.labs.id] }),
   round: one(events.rounds, { fields: [assignments.mentorAssignments.roundId], references: [events.rounds.id] }),
+}));
+
+export const coordinatorAssignmentsRelations = relations(assignments.coordinatorAssignments, ({ one }) => ({
+  coordinator: one(auth.users, { fields: [assignments.coordinatorAssignments.coordinatorId], references: [auth.users.id] }),
+  lab: one(events.labs, { fields: [assignments.coordinatorAssignments.labId], references: [events.labs.id] }),
 }));
 
 export const reviewsRelations = relations(reviews.reviews, ({ one, many }) => ({
@@ -137,4 +161,47 @@ export const notificationsRelations = relations(auth.notifications, ({ one }) =>
 
 export const auditLogsRelations = relations(auth.auditLogs, ({ one }) => ({
   user: one(auth.users, { fields: [auth.auditLogs.userId], references: [auth.users.id] }),
+}));
+
+// ─────────────────────────────────────────
+// NEW: Student Auth Relations
+// ─────────────────────────────────────────
+
+export const studentTeamAuthRelations = relations(studentAuth.studentTeamAuth, ({ one }) => ({
+  team: one(teams.teams, { fields: [studentAuth.studentTeamAuth.teamId], references: [teams.teams.id] }),
+}));
+
+// ─────────────────────────────────────────
+// NEW: Issues Relations
+// ─────────────────────────────────────────
+
+export const issuesRelations = relations(issuesModule.issues, ({ one }) => ({
+  team: one(teams.teams, { fields: [issuesModule.issues.teamId], references: [teams.teams.id] }),
+  event: one(events.events, { fields: [issuesModule.issues.eventId], references: [events.events.id] }),
+  lab: one(events.labs, { fields: [issuesModule.issues.labId], references: [events.labs.id] }),
+  resolvedBy: one(auth.users, { fields: [issuesModule.issues.resolvedById], references: [auth.users.id] }),
+}));
+
+// ─────────────────────────────────────────
+// NEW: Attendance Relations
+// ─────────────────────────────────────────
+
+export const attendanceSlotsRelations = relations(attendanceModule.attendanceSlots, ({ one, many }) => ({
+  event: one(events.events, { fields: [attendanceModule.attendanceSlots.eventId], references: [events.events.id] }),
+  createdBy: one(auth.users, { fields: [attendanceModule.attendanceSlots.createdById], references: [auth.users.id] }),
+  labSubmissions: many(attendanceModule.labAttendanceSubmissions),
+}));
+
+export const labAttendanceSubmissionsRelations = relations(attendanceModule.labAttendanceSubmissions, ({ one, many }) => ({
+  slot: one(attendanceModule.attendanceSlots, { fields: [attendanceModule.labAttendanceSubmissions.slotId], references: [attendanceModule.attendanceSlots.id] }),
+  lab: one(events.labs, { fields: [attendanceModule.labAttendanceSubmissions.labId], references: [events.labs.id] }),
+  submittedBy: one(auth.users, { fields: [attendanceModule.labAttendanceSubmissions.submittedById], references: [auth.users.id] }),
+  memberRecords: many(attendanceModule.memberAttendance),
+}));
+
+export const memberAttendanceRelations = relations(attendanceModule.memberAttendance, ({ one }) => ({
+  submission: one(attendanceModule.labAttendanceSubmissions, { fields: [attendanceModule.memberAttendance.submissionId], references: [attendanceModule.labAttendanceSubmissions.id] }),
+  team: one(teams.teams, { fields: [attendanceModule.memberAttendance.teamId], references: [teams.teams.id] }),
+  member: one(teams.teamMembers, { fields: [attendanceModule.memberAttendance.memberId], references: [teams.teamMembers.id] }),
+  markedBy: one(auth.users, { fields: [attendanceModule.memberAttendance.markedById], references: [auth.users.id] }),
 }));

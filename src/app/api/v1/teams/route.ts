@@ -1,8 +1,8 @@
 export const runtime = 'nodejs';
 
 import { db } from '@/db';
-import { teams } from '@/db/schema';
-import { eq, or, ilike, and, isNull, desc, count } from 'drizzle-orm';
+import { teams, labAssignments, mentorAssignments, coordinatorAssignments } from '@/db/schema';
+import { eq, or, ilike, and, isNull, desc, count, inArray } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, parsePagination, paginationMeta, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
 
@@ -18,15 +18,34 @@ const createTeamSchema = z.object({
 
 // GET /api/v1/teams — List teams
 export async function GET(request: Request) {
-  return withAuth(request, async () => {
+  return withAuth(request, async (user) => {
     const url = new URL(request.url);
     const { page, limit, skip, q } = parsePagination(url);
     const eventIdParam = url.searchParams.get('eventId') || undefined;
+    const labIdParam = url.searchParams.get('labId') || undefined;
     const attendanceStatusParam = url.searchParams.get('attendanceStatus') || undefined;
 
     const conditions = [isNull(teams.deletedAt)];
     if (eventIdParam) conditions.push(eq(teams.eventId, eventIdParam)!);
+    if (labIdParam) conditions.push(eq(teams.labId, labIdParam)!);
     if (attendanceStatusParam) conditions.push(eq(teams.attendanceStatus, attendanceStatusParam)!);
+
+    // Strict Role Scoping
+    if (user.role === 'coordinator') {
+      const coordAsns = await db.select({ labId: coordinatorAssignments.labId })
+        .from(coordinatorAssignments).where(eq(coordinatorAssignments.coordinatorId, user.sub));
+      const myLabs = coordAsns.map(a => a.labId);
+      if (myLabs.length === 0) return successResponse([], 200, { meta: paginationMeta(0, page, limit) });
+      if (labIdParam && !myLabs.includes(labIdParam)) return errorResponse('FORBIDDEN', 'Access denied to this lab', 403);
+      conditions.push(inArray(teams.labId, myLabs));
+    } else if (user.role === 'mentor') {
+      const mentorAsns = await db.select({ labId: mentorAssignments.labId })
+        .from(mentorAssignments).where(eq(mentorAssignments.mentorId, user.sub));
+      const myLabs = mentorAsns.map(a => a.labId);
+      if (myLabs.length === 0) return successResponse([], 200, { meta: paginationMeta(0, page, limit) });
+      if (labIdParam && !myLabs.includes(labIdParam)) return errorResponse('FORBIDDEN', 'Access denied to this lab', 403);
+      conditions.push(inArray(teams.labId, myLabs));
+    }
     
     if (q) {
       conditions.push(or(
@@ -62,9 +81,9 @@ export async function GET(request: Request) {
       domain: t.domain,
       department: t.department,
       attendanceStatus: t.attendanceStatus,
-      memberCount: t.members.length,
-      eventName: t.event.eventName,
-      labName: t.labAssignments[0]?.lab.labName || null,
+      memberCount: t.members?.length || 0,
+      eventName: t.event?.eventName || 'Deleted Event',
+      labName: t.labAssignments?.[0]?.lab?.labName || null,
       createdAt: t.createdAt.toISOString(),
     }));
 

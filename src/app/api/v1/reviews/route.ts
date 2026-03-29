@@ -1,8 +1,8 @@
 export const runtime = 'nodejs';
 
 import { db } from '@/db';
-import { reviews, rounds, mentorAssignments, suggestions, suggestionStatusLogs } from '@/db/schema';
-import { eq, and, desc, count } from 'drizzle-orm';
+import { reviews, rounds, mentorAssignments, coordinatorAssignments, suggestions, suggestionStatusLogs } from '@/db/schema';
+import { eq, and, desc, count, inArray } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, parsePagination, paginationMeta, createAuditLog } from '@/lib/api-utils';
 import { z } from 'zod';
 import { calculateCompositeScore } from '@/types';
@@ -48,7 +48,6 @@ export async function GET(request: Request) {
     const conditions = [];
     if (teamIdParam) conditions.push(eq(reviews.teamId, teamIdParam));
     
-    // Non-admins can only see their own drafts, but can see all submitted reviews (or access controlled)
     if (user.role === 'mentor' && mentorIdParam === user.sub) {
         conditions.push(eq(reviews.mentorId, user.sub));
     } else if (mentorIdParam) {
@@ -56,6 +55,21 @@ export async function GET(request: Request) {
     }
     
     if (isDraftParam !== undefined) conditions.push(eq(reviews.isDraft, isDraftParam));
+
+    // Strict Role Scoping
+    if (user.role === 'coordinator') {
+      const coordAsns = await db.select({ labId: coordinatorAssignments.labId })
+        .from(coordinatorAssignments).where(eq(coordinatorAssignments.coordinatorId, user.sub));
+      const myLabs = coordAsns.map(a => a.labId);
+      if (myLabs.length === 0) return successResponse([], 200, { meta: paginationMeta(0, page, limit) });
+      conditions.push(inArray(reviews.labId, myLabs));
+    } else if (user.role === 'mentor') {
+      const mentorAsns = await db.select({ labId: mentorAssignments.labId })
+        .from(mentorAssignments).where(eq(mentorAssignments.mentorId, user.sub));
+      const myLabs = mentorAsns.map(a => a.labId);
+      if (myLabs.length === 0) return successResponse([], 200, { meta: paginationMeta(0, page, limit) });
+      conditions.push(inArray(reviews.labId, myLabs));
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

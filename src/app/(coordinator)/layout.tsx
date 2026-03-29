@@ -3,15 +3,19 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useAppStore } from '@/stores/useAppStore';
 import { useEffect, useState } from 'react';
-import { ClipboardCheck, FlaskConical, LogOut, Shield } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ClipboardCheck, FlaskConical, LogOut, Shield, UserPlus, Clock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
 
 const COORD_NAV = [
+  { href: '/coordinator/dashboard', label: 'Dashboard', icon: ClipboardCheck },
   { href: '/coordinator/checkin', label: 'Check-In', icon: ClipboardCheck },
+  { href: '/coordinator/register', label: 'Register', icon: UserPlus },
   { href: '/coordinator/labs', label: 'Labs', icon: FlaskConical },
+  { href: '/coordinator/attendance', label: 'Attendance', icon: Clock },
 ];
 
 export default function CoordinatorLayout({ children }: { children: React.ReactNode }) {
@@ -19,8 +23,23 @@ export default function CoordinatorLayout({ children }: { children: React.ReactN
   const router = useRouter();
   const { user, clearAuth } = useAppStore();
   const [mounted, setMounted] = useState(false);
+  const [alerts, setAlerts] = useState<any[]>([]);
 
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    if (user?.role === 'coordinator') {
+      const fetchAlerts = async () => {
+        try {
+          const { data } = await apiClient.get('/coordinator/attendance/status');
+          setAlerts(data.data || []);
+        } catch {}
+      };
+      fetchAlerts();
+      const interval = setInterval(fetchAlerts, 60000); // 1-minute polling
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (mounted && !user) router.push('/login');
@@ -60,6 +79,27 @@ export default function CoordinatorLayout({ children }: { children: React.ReactN
           </div>
         </div>
       </header>
+
+      {/* Global Attendance Alerts */}
+      {alerts.length > 0 && (
+        <div className="max-w-3xl mx-auto px-4 mt-4 space-y-2">
+          {alerts.map((alert, i) => (
+            <motion.div 
+              key={`${alert.slotId}-${alert.labId}-${i}`} 
+              initial={{ opacity: 0, y: -10 }} 
+              animate={{ opacity: 1, y: 0 }}
+              className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium cursor-pointer transition-shadow
+                ${alert.level === 'danger' ? 'bg-red-50 border-red-200 text-red-700' : 
+                  alert.level === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-700' : 
+                  'bg-blue-50 border-blue-200 text-blue-700'}`}
+              onClick={() => router.push('/coordinator/attendance')}
+            >
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{alert.message}</span>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-20 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex">

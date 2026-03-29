@@ -54,11 +54,11 @@ async function getAnalyticsData() {
   const labData = Object.entries(labProgress).map(([name, completed]) => ({ name, completed }));
 
   const roundScores = reviewsList.reduce((acc, r) => {
-    const roundName = r.round.roundName;
+    const roundName = r.round?.roundName || 'Unknown';
     if (!acc[roundName]) {
       acc[roundName] = { total: 0, count: 0 };
     }
-    acc[roundName].total += Number(r.compositeScore);
+    acc[roundName].total += Number(r.compositeScore || 0);
     acc[roundName].count += 1;
     return acc;
   }, {} as Record<string, { total: number, count: number }>);
@@ -82,9 +82,9 @@ async function getAnalyticsData() {
     .slice(0, 5)
     .map(s => ({
       id: s.id,
-      team: s.suggestion.review.team.teamName,
-      text: s.suggestion.text,
-      round: s.round.roundName
+      team: s.suggestion?.review?.team?.teamName || 'Unknown Team',
+      text: s.suggestion?.text || 'No text',
+      round: s.round?.roundName || 'Unknown Round'
     }));
 
   return { verdictData, labData, scoreData, stats: { teams: teamsCount, labs: labsCount, reviews: reviewsList.length }, compliance, topUnresolved };

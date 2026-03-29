@@ -6,7 +6,7 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'dev-secret-jwt-key-at-least-256-bits-long-change-in-production'
 );
 
-// Routes that are protected and which roles can access them
+// Staff role routes (admin, mentor, coordinator)
 const ROLE_ROUTES: Record<string, string[]> = {
   '/dashboard': ['super_admin', 'admin'],
   '/events': ['super_admin', 'admin'],
@@ -24,9 +24,10 @@ const ROLE_ROUTES: Record<string, string[]> = {
   '/coordinator': ['coordinator'],
 };
 
-// Public routes that never need auth
+// Public paths (no auth required)
 const PUBLIC_PATHS = [
   '/login',
+  '/student/login',
   '/forgot-password',
   '/reset-password',
   '/change-password',
@@ -34,6 +35,7 @@ const PUBLIC_PATHS = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
+  '/api/v1/student/auth/login',
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -52,7 +54,7 @@ function matchedProtectedPrefix(pathname: string): string | null {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow static files, _next internals, and public API routes
+  // Allow static files, _next internals, and public paths
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
@@ -61,21 +63,39 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow all non-protected API routes (auth is handled inside each route with withAuth)
+  // Allow all non-protected API routes (auth handled inside each route with withAuth)
   if (pathname.startsWith('/api/')) {
     return NextResponse.next();
   }
 
+  // ─── Student Portal Routes ───
+  if (pathname.startsWith('/student')) {
+    const studentToken = request.cookies.get('studentAccessToken')?.value;
+    if (!studentToken) {
+      return NextResponse.redirect(new URL('/student/login', request.url));
+    }
+    try {
+      const { payload } = await jwtVerify(studentToken, JWT_SECRET);
+      if (payload.role !== 'student') {
+        return NextResponse.redirect(new URL('/student/login', request.url));
+      }
+      return NextResponse.next();
+    } catch {
+      const response = NextResponse.redirect(new URL('/student/login', request.url));
+      response.cookies.delete('studentAccessToken');
+      return response;
+    }
+  }
+
+  // ─── Staff Routes ───
   const protectedPrefix = matchedProtectedPrefix(pathname);
   if (!protectedPrefix) {
-    // Root or unmatched — redirect to login
     if (pathname === '/') {
       return NextResponse.redirect(new URL('/login', request.url));
     }
     return NextResponse.next();
   }
 
-  // Try to validate access token from Authorization header or accessToken cookie
   const authHeader = request.headers.get('authorization');
   const accessTokenCookie = request.cookies.get('accessToken')?.value;
   const token = authHeader?.startsWith('Bearer ')
@@ -92,7 +112,6 @@ export async function middleware(request: NextRequest) {
     const allowedRoles = ROLE_ROUTES[protectedPrefix] || [];
 
     if (!allowedRoles.includes(role)) {
-      // Redirect to their own dashboard
       const dashboardMap: Record<string, string> = {
         mentor: '/mentor/dashboard',
         coordinator: '/coordinator/checkin',
@@ -104,7 +123,6 @@ export async function middleware(request: NextRequest) {
 
     return NextResponse.next();
   } catch {
-    // Token expired or invalid — redirect to login
     const response = NextResponse.redirect(
       new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url)
     );

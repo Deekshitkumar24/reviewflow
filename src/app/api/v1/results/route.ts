@@ -34,12 +34,12 @@ export async function GET(request: Request) {
     const data = resultList.map(r => ({
       id: r.id,
       teamId: r.teamId,
-      teamName: r.team.teamName,
-      projectTitle: r.team.projectTitle,
+      teamName: r.team?.teamName || 'Deleted Team',
+      projectTitle: r.team?.projectTitle || 'Unknown Project',
       finalPosition: r.finalPosition,
       awardType: r.awardType,
       declaredAt: r.declaredAt?.toISOString(),
-      members: r.team.members.map(m => m.fullName),
+      members: r.team?.members?.map(m => m.fullName) || [],
     }));
 
     return successResponse(data, 200);

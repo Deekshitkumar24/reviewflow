@@ -24,6 +24,8 @@ import {
   BarChart2,
   Trophy,
   UserCircle,
+  Clock, // Added Clock for Attendance
+  ClipboardCheck, // Added for Assignments
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +39,10 @@ const NAV_ITEMS = [
   { href: '/events', label: 'Events', icon: Calendar },
   { href: '/teams', label: 'Teams', icon: Users2 },
   { href: '/labs', label: 'Labs', icon: FlaskConical },
+  { href: '/assignments', label: 'Assignments', icon: ClipboardCheck },
   { href: '/users', label: 'Users', icon: Users },
+  { href: '/attendance', label: 'Attendance Slots', icon: Clock },
+  { href: '/attendance/overview', label: 'Attendance Overview', icon: FileText },
   { href: '/results', label: 'Results', icon: Trophy },
   { href: '/live', label: 'Live Monitor', icon: Activity },
   { href: '/reports', label: 'Reports', icon: BarChart2 },

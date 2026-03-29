@@ -14,8 +14,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import apiClient from '@/lib/apiClient';
 import { toast } from 'sonner';
-import { VERDICT_CONFIG, ATTENDANCE_CONFIG, type VerdictType, type AttendanceStatus } from '@/types';
+import { VERDICT_CONFIG, ATTENDANCE_CONFIG, EVALUATION_STATUS_CONFIG, type VerdictType, type AttendanceStatus, type EvaluationStatus } from '@/types';
 import { format } from 'date-fns';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { useAppStore } from '@/stores/useAppStore';
 
 // ─── Types ──────────────────────────────────────────────────
 interface TeamDetail {
@@ -30,6 +32,12 @@ interface TeamDetail {
   pptLink: string | null;
   demoLink: string | null;
   attendanceStatus: AttendanceStatus;
+  evaluationStatus: string;
+  isProjectReady: boolean;
+  isPptReady: boolean;
+  isDemoReady: boolean;
+  isFinalSubmissionReady: boolean;
+  readinessRemarks: string | null;
   checkedInAt: string | null;
   createdAt: string;
   members: {
@@ -79,6 +87,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [evalStatusUpdate, setEvalStatusUpdate] = useState<EvaluationStatus>('not_evaluated');
+  const user = useAppStore(s => s.user);
+  const queryClient = useQueryClient();
 
   const fetchTeam = async () => {
     setLoading(true);
@@ -86,6 +97,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
     try {
       const { data } = await apiClient.get(`/teams/${teamId}`);
       setTeam(data.data);
+      if (data.data.evaluationStatus) {
+        setEvalStatusUpdate(data.data.evaluationStatus as EvaluationStatus);
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Failed to load team';
       setError(msg);
@@ -96,6 +110,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
   };
 
   useEffect(() => { fetchTeam(); }, [teamId]);
+
+  const updateEvalStatusMutation = useMutation({
+    mutationFn: async (status: EvaluationStatus) => {
+      const res = await apiClient.patch(`/teams/${teamId}/evaluation-status`, { evaluationStatus: status });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('Evaluation status synced');
+      queryClient.invalidateQueries({ queryKey: ['team', teamId] });
+      fetchTeam();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'Failed to sync status'),
+  });
 
   if (loading) return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -135,6 +162,65 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
           <Button variant="ghost" size="sm" onClick={fetchTeam}><RefreshCcw className="w-4 h-4" /></Button>
         </div>
       </div>
+
+      {/* Mentor Evaluation Sync Component */}
+      {user?.role === 'mentor' && team && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+               Evaluation Sync
+            </h2>
+          </div>
+          <p className="text-sm text-gray-500">Update the live evaluation status. This dynamically syncs with the student portal, coordinator dashboard, and admin monitoring.</p>
+          
+          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-100 dark:border-gray-800">
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Status</p>
+                <Badge className="px-3 py-1 text-xs" style={{ 
+                  backgroundColor: EVALUATION_STATUS_CONFIG[team.evaluationStatus as EvaluationStatus]?.bg || '#f3f4f6', 
+                  color: EVALUATION_STATUS_CONFIG[team.evaluationStatus as EvaluationStatus]?.color || '#4b5563' 
+                }}>
+                  {EVALUATION_STATUS_CONFIG[team.evaluationStatus as EvaluationStatus]?.label || 'Not Evaluated'}
+                </Badge>
+              </div>
+              
+              <div className="flex-1 w-full md:w-auto md:max-w-xs">
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Change Status To</label>
+                <div className="flex gap-2">
+                  <select 
+                    value={evalStatusUpdate} 
+                    onChange={e => setEvalStatusUpdate(e.target.value as EvaluationStatus)}
+                    className="flex-1 h-9 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm"
+                  >
+                    <option value="not_evaluated">Not Evaluated</option>
+                    <option value="under_evaluation">Under Evaluation</option>
+                    <option value="evaluated">Evaluated</option>
+                    <option value="re_evaluation_required">Re-evaluation Required</option>
+                  </select>
+                  <Button 
+                    onClick={() => updateEvalStatusMutation.mutate(evalStatusUpdate)} 
+                    disabled={updateEvalStatusMutation.isPending || evalStatusUpdate === team.evaluationStatus}
+                    className="h-9 bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    {updateEvalStatusMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-xs text-gray-500 bg-white dark:bg-gray-900 p-3 rounded-md border border-gray-100 dark:border-gray-800 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-indigo-400" />
+              <p>
+                {evalStatusUpdate === 'not_evaluated' && "Resetting to 'Not Evaluated'. Use this only if evaluation was started by mistake."}
+                {evalStatusUpdate === 'under_evaluation' && "Marks the team as actively being reviewed right now. Prevents other mentors from taking it."}
+                {evalStatusUpdate === 'evaluated' && "Marks this team's review process as completely finished."}
+                {evalStatusUpdate === 're_evaluation_required' && "Signals the team to fix issues and request a follow-up review. They will see this in their portal."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Result banner */}
       {team.result && team.result.isPublished && (
@@ -186,6 +272,36 @@ export default function TeamDetailPage({ params }: { params: Promise<{ teamId: s
         <TabsContent value="overview">
           <Card><CardContent className="p-6 space-y-4 text-sm">
             {team.projectDescription && <p className="text-gray-600 dark:text-gray-400">{team.projectDescription}</p>}
+
+            {/* Readiness Section */}
+            <div className="bg-emerald-50/50 dark:bg-emerald-950/10 rounded-xl p-5 border border-emerald-100 dark:border-emerald-900/30">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Team Readiness
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Project Ready', value: team.isProjectReady },
+                  { label: 'PPT Completed', value: team.isPptReady },
+                  { label: 'Demo Ready', value: team.isDemoReady },
+                  { label: 'Final Submission', value: team.isFinalSubmissionReady },
+                ].map(item => (
+                  <div key={item.label} className="bg-white dark:bg-gray-900 px-3 py-2 rounded-lg border border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">{item.label}</span>
+                    {item.value ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-gray-300 dark:text-gray-700" />
+                    )}
+                  </div>
+                ))}
+              </div>
+              {team.readinessRemarks && (
+                <div className="mt-3 text-xs text-emerald-800 dark:text-emerald-300 bg-white/50 dark:bg-gray-900/50 p-2 rounded-lg italic">
+                  " {team.readinessRemarks} "
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-gray-400">Department</p><p className="font-medium text-gray-900 dark:text-gray-100">{team.department}</p></div>
               <div><p className="text-xs text-gray-400">College</p><p className="font-medium text-gray-900 dark:text-gray-100">{team.collegeName}</p></div>
