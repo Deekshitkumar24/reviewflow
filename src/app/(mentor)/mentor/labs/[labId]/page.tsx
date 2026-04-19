@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle2, Clock, FlaskConical, ClipboardList, RefreshCcw } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, FlaskConical, ClipboardList, RefreshCcw, ShieldCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +23,7 @@ interface LabTeam {
   latestVerdict: VerdictType | null;
   latestScore: number | null;
   isReviewed: boolean;
+  isReady: boolean;
 }
 
 interface LabInfo {
@@ -35,33 +37,33 @@ export default function MentorLabPage({ params }: { params: Promise<{ labId: str
   const searchParams = useSearchParams();
   const roundId = searchParams.get('roundId') ?? '';
 
-  const [lab, setLab] = useState<LabInfo | null>(null);
-  const [teams, setTeams] = useState<LabTeam[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading, refetch } = useQuery({
+    queryKey: ['mentor-lab-queue', labId, roundId],
+    queryFn: async () => {
+      let labInfo: LabInfo | null = null;
+      try {
+        const { data: labData } = await apiClient.get(`/labs/${labId}`);
+        labInfo = { labName: labData.data.labName, building: labData.data.building };
+      } catch { labInfo = { labName: `Lab ${labId.slice(0, 6)}`, building: null }; }
 
-  const fetchQueue = async () => {
-    setLoading(true);
-    try {
-      // Fetch teams assigned to this lab/round
       const teamsParams = new URLSearchParams({ labId, limit: '200' });
       if (roundId) teamsParams.set('roundId', roundId);
       const { data: teamsData } = await apiClient.get(`/teams?${teamsParams}`);
       const rawTeams = teamsData.data ?? [];
 
-      // Fetch submitted reviews for this lab/round (by this mentor — backend filters)
       const reviewParams = new URLSearchParams({ labId, isDraft: 'false', limit: '200' });
       if (roundId) reviewParams.set('roundId', roundId);
       const { data: reviewsData } = await apiClient.get(`/reviews?${reviewParams}`);
       const reviews = reviewsData.data ?? [];
 
-      // Build a map of teamId → review
       const reviewMap = new Map<string, { verdict: string; totalScore: number }>();
       for (const r of reviews) {
         reviewMap.set(r.teamId, { verdict: r.verdict, totalScore: r.totalScore });
       }
 
-      const enrichedTeams: LabTeam[] = rawTeams.map((t: { id: string; teamName: string; projectTitle: string; domain: string | null; members: { id: string }[] }) => {
+      const enrichedTeams: LabTeam[] = rawTeams.map((t: any) => {
         const rev = reviewMap.get(t.id);
+        const isReady = !!(t.isProjectReady && t.isPptReady && t.isDemoReady && t.isFinalSubmissionReady);
         return {
           id: t.id,
           teamName: t.teamName,
@@ -71,32 +73,23 @@ export default function MentorLabPage({ params }: { params: Promise<{ labId: str
           latestVerdict: (rev?.verdict as VerdictType) ?? null,
           latestScore: rev?.totalScore ?? null,
           isReviewed: !!rev,
+          isReady,
         };
       });
 
-      // Sort: unreviewed first
       enrichedTeams.sort((a, b) => {
         if (a.isReviewed === b.isReviewed) return 0;
         return a.isReviewed ? 1 : -1;
       });
 
-      setTeams(enrichedTeams);
+      return { teams: enrichedTeams, lab: labInfo };
+    },
+    refetchInterval: 30000,
+  });
 
-      // Get lab name from first assignment or fallback
-      if (!lab && labId) {
-        try {
-          const { data: labData } = await apiClient.get(`/labs/${labId}`);
-          setLab({ labName: labData.data.labName, building: labData.data.building });
-        } catch { setLab({ labName: `Lab ${labId.slice(0, 6)}`, building: null }); }
-      }
-    } catch {
-      toast.error('Failed to load team queue');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchQueue(); }, [labId, roundId]);
+  const teams = data?.teams ?? [];
+  const lab = data?.lab ?? null;
+  const fetchQueue = () => refetch();
 
   const reviewed = teams.filter((t) => t.isReviewed).length;
   const total = teams.length;
@@ -159,6 +152,11 @@ export default function MentorLabPage({ params }: { params: Promise<{ labId: str
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <h3 className="font-semibold text-gray-900 dark:text-gray-100">{team.teamName}</h3>
+                      {team.isReady && !team.isReviewed && (
+                        <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 gap-1 px-1.5 py-0">
+                          <ShieldCheck className="w-3 h-3" /> Ready
+                        </Badge>
+                      )}
                       {team.isReviewed && team.latestVerdict && (
                         <Badge variant="secondary" className="text-[10px]" style={{ backgroundColor: VERDICT_CONFIG[team.latestVerdict].bg, color: VERDICT_CONFIG[team.latestVerdict].color }}>
                           {VERDICT_CONFIG[team.latestVerdict].label}

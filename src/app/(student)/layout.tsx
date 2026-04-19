@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { GlobalSearch } from '@/components/app/GlobalSearch';
 
 const STUDENT_NAV = [
   { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -52,15 +53,20 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       <header className="sticky top-0 z-20 h-14 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto h-full flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center hidden sm:flex">
               <Users className="w-4 h-4 text-white" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-gray-900 dark:text-gray-100 text-sm leading-tight">{team.teamName}</span>
-              <span className="text-[10px] text-gray-400 leading-tight">Team Portal</span>
+              <span className="font-bold text-gray-900 dark:text-gray-100 text-sm leading-tight hidden sm:block">{team.teamName}</span>
+              <span className="text-[10px] text-gray-400 leading-tight hidden sm:block">Team Portal</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          
+          <div className="flex-1 mx-4 max-w-sm">
+            <GlobalSearch />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-emerald-600 text-white text-xs">{initials}</AvatarFallback>
             </Avatar>

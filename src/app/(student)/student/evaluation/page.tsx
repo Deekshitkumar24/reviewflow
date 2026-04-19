@@ -17,6 +17,7 @@ export default function StudentEvaluationPage() {
       return res.data.data;
     },
     enabled: !!team?.teamId,
+    refetchInterval: 15000,
   });
 
   if (isLoading) {

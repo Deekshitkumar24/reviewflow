@@ -51,6 +51,9 @@ export default function StudentReadinessPage() {
     onSuccess: () => {
       toast.success('Readiness updated');
       queryClient.invalidateQueries({ queryKey: ['student-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['mentor', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
     onError: () => toast.error('Failed to update readiness'),
   });

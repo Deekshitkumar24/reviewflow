@@ -101,6 +101,9 @@ export default function CoordinatorAttendancePage() {
     onSuccess: () => {
       toast.success('Attendance submitted successfully');
       queryClient.invalidateQueries({ queryKey: ['coordinator-attendance'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'Submission failed'),
   });
@@ -127,8 +130,13 @@ export default function CoordinatorAttendancePage() {
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-3">
           <label className="block text-xs font-medium text-gray-500 mb-1">Slot</label>
           <select value={selectedSlotId} onChange={e => setSelectedSlotId(e.target.value)}
-            className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2 text-sm">
-            {slots?.map((s: any) => <option key={s.id} value={s.id}>#{s.slotNumber} {s.slotName}</option>)}
+            disabled={!slots || slots.length === 0}
+            className="w-full h-9 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2 text-sm disabled:opacity-50">
+            {!slots || slots.length === 0 ? (
+              <option value="">No active slots</option>
+            ) : (
+              slots.map((s: any) => <option key={s.id} value={s.id}>#{s.slotNumber} {s.slotName}</option>)
+            )}
           </select>
         </div>
       </div>

@@ -24,8 +24,9 @@ import {
   BarChart2,
   Trophy,
   UserCircle,
-  Clock, // Added Clock for Attendance
-  ClipboardCheck, // Added for Assignments
+  Clock, 
+  ClipboardCheck, 
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
+import { GlobalSearch } from '@/components/app/GlobalSearch';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -44,6 +46,7 @@ const NAV_ITEMS = [
   { href: '/attendance', label: 'Attendance Slots', icon: Clock },
   { href: '/attendance/overview', label: 'Attendance Overview', icon: FileText },
   { href: '/results', label: 'Results', icon: Trophy },
+  { href: '/issues', label: 'Issues', icon: AlertTriangle },
   { href: '/live', label: 'Live Monitor', icon: Activity },
   { href: '/reports', label: 'Reports', icon: BarChart2 },
   { href: '/audit-logs', label: 'Audit Logs', icon: FileText },
@@ -94,17 +97,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const initials = user.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex">
+    <div className="min-h-screen bg-black flex selection:bg-blue-500/30">
       {/* Sidebar */}
       <motion.aside
         animate={{ width: sidebarCollapsed ? 56 : 240 }}
         transition={{ duration: 0.2, ease: 'easeInOut' }}
-        className="fixed top-0 left-0 h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-30 flex flex-col"
+        className="fixed top-0 left-0 h-screen bg-[#111] border-r border-white/10 z-30 flex flex-col"
       >
         {/* Logo */}
-        <div className="h-14 flex items-center px-4 border-b border-gray-200 dark:border-gray-800">
+        <div className="h-14 flex items-center px-4 border-b border-white/10">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-[#1A56DB] flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 flex-shrink-0">
               <Shield className="w-4 h-4 text-white" />
             </div>
             <AnimatePresence>
@@ -130,17 +133,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <button
                 key={item.href}
                 onClick={() => router.push(item.href)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative group overflow-hidden ${
                   isActive
-                    ? 'bg-blue-50 dark:bg-blue-950/40 text-[#1A56DB] dark:text-blue-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
+                    ? 'bg-blue-500/10 text-blue-500'
+                    : 'text-gray-400 hover:bg-white/[0.04] hover:text-white'
                 }`}
                 title={sidebarCollapsed ? item.label : undefined}
               >
                 {isActive && (
                   <motion.div
                     layoutId="activeNav"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#1A56DB] rounded-r"
+                    className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-r shadow-[0_0_10px_rgba(37,99,235,0.5)]"
                   />
                 )}
                 <item.icon className="w-5 h-5 flex-shrink-0" />
@@ -162,10 +165,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         {/* Collapse Toggle */}
-        <div className="px-2 py-2 border-t border-gray-200 dark:border-gray-800">
+        <div className="px-2 py-2 border-t border-white/10">
           <button
             onClick={toggleSidebar}
-            className="w-full flex items-center justify-center p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="w-full flex items-center justify-center p-2 rounded-lg text-gray-500 hover:bg-white/5 hover:text-white transition-colors"
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -179,35 +182,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         style={{ marginLeft: sidebarCollapsed ? 56 : 240 }}
       >
         {/* Top Bar */}
-        <header className="sticky top-0 z-20 h-14 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => useAppStore.getState().toggleCommandPalette()}
-              className="flex items-center gap-2 h-9 px-3 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            >
-              <Search className="w-4 h-4" />
-              <span className="hidden sm:inline">Search...</span>
-              <kbd className="hidden sm:inline text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">⌘K</kbd>
-            </button>
+        <header className="sticky top-0 z-20 h-14 bg-[#111]/80 backdrop-blur-lg border-b border-white/10 flex items-center justify-between px-6">
+          <div className="flex items-center gap-3 flex-1 lg:flex-none">
+            <GlobalSearch />
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Dark mode toggle */}
+            {/* Dark mode toggle (hidden since app is fully dark mode, keeping logic if necessary, or just leaving as button) */}
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleDarkMode}
-              className="h-9 w-9 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="h-9 w-9 text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
               aria-label="Toggle dark mode"
             >
-              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              <Moon className="w-4 h-4 text-blue-400" />
             </Button>
 
             {/* Notifications */}
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 relative text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="h-9 w-9 relative text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
               aria-label="Notifications"
             >
               <Bell className="w-4 h-4" />
@@ -218,25 +214,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               )}
             </Button>
 
-            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Separator orientation="vertical" className="h-6 mx-1 bg-white/10" />
 
             {/* User Menu */}
             <div className="flex items-center gap-2.5">
               <button
                 onClick={() => router.push('/profile')}
-                className="flex items-center gap-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 px-2 py-1 transition-colors"
+                className="flex items-center gap-2.5 rounded-lg hover:bg-white/5 px-2 py-1 transition-colors group"
                 title="View profile"
               >
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-[#1A56DB] text-white text-xs font-medium">
+                <Avatar className="h-8 w-8 ring-2 ring-transparent group-hover:ring-blue-500/50 transition-all">
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs font-semibold">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden sm:block text-left">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-tight">
+                  <p className="text-sm font-medium text-white leading-tight transition-colors group-hover:text-blue-400">
                     {user.fullName}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                  <p className="text-xs text-gray-500 capitalize">
                     {user.role.replace('_', ' ')}
                   </p>
                 </div>
@@ -245,7 +241,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 variant="ghost"
                 size="icon"
                 onClick={() => router.push('/profile')}
-                className="h-8 w-8 text-gray-400 hover:text-[#1A56DB]"
+                className="h-8 w-8 text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
                 aria-label="My profile"
                 title="My profile"
               >
@@ -255,7 +251,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 variant="ghost"
                 size="icon"
                 onClick={handleLogout}
-                className="h-8 w-8 text-gray-400 hover:text-red-500"
+                className="h-8 w-8 text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                 aria-label="Logout"
               >
                 <LogOut className="w-4 h-4" />

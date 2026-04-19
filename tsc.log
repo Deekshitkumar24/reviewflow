@@ -1,0 +1,4 @@
+﻿src/app/api/v1/issues/[id]/route.ts(5,10): error TS2305: Module '"@/lib/auth"' has no exported member 'requireAuth'.
+src/app/api/v1/issues/[id]/route.ts(6,48): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+src/app/api/v1/issues/route.ts(5,10): error TS2305: Module '"@/lib/auth"' has no exported member 'requireAuth'.
+src/app/api/v1/issues/route.ts(6,48): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Loader2, Save, Send, ChevronDown, ChevronUp, Info, AlertTriangle, CheckCircle2, XCircle, Zap, Plus, Trash2, GripVertical, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -123,11 +124,10 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
   const [suggestions, setSuggestions] = useState<SuggestionDraft[]>([]);
 
   // Previous suggestion statuses
+  // Suggestion Statuses
   const [suggestionStatuses, setSuggestionStatuses] = useState<SuggestionStatusDraft[]>([]);
 
-  // Submit state
-  const [submitting, setSubmitting] = useState(false);
-  const [savingDraft, setSavingDraft] = useState(false);
+  const queryClient = useQueryClient();
 
   const compositeScore = calculateCompositeScore(scores);
 
@@ -270,16 +270,42 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
     setScores(prev => ({ ...prev, [key]: value }));
   };
 
-  // ─── Suggestion management ────────────────────────────────
   const addSuggestion = () => {
     if (suggestions.length >= 5 || isReadOnly) return;
     setSuggestions([...suggestions, { text: '', category: 'Technical', orderIndex: suggestions.length }]);
   };
 
-  const removeSuggestion = (idx: number) => {
+  const removeSuggestion = (index: number) => {
     if (isReadOnly) return;
-    setSuggestions(suggestions.filter((_, i) => i !== idx));
+    setSuggestions(suggestions.filter((_, i) => i !== index));
   };
+
+  const submitMutation = useMutation({
+    mutationFn: async ({ payload, isDraft }: { payload: any, isDraft: boolean }) => {
+      const res = await apiClient.post('/reviews', payload);
+      return { data: res.data, isDraft };
+    },
+    onSuccess: ({ data, isDraft }) => {
+      toast.success(isDraft ? 'Draft saved successfully' : 'Review submitted successfully!');
+      
+      // Target invalidations
+      queryClient.invalidateQueries({ queryKey: ['mentor-lab-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['mentor', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['student-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['student-evaluation'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
+
+      if (!isDraft) {
+        router.back();
+      }
+    },
+    onError: (err: any) => {
+      const message = err?.response?.data?.error?.message ?? 'Failed to submit review';
+      toast.error(message);
+    }
+  });
 
   // ─── Submit handler (real API) ────────────────────────────
   const handleSubmit = async (isDraft: boolean) => {
@@ -305,69 +331,43 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
       }
     }
 
-    isDraft ? setSavingDraft(true) : setSubmitting(true);
-
-    try {
-      // We need to find the actual roundId UUID. Get it from the lab assignments.
-      let actualRoundId = roundId;
-      if (team?.labAssignments && currentRound) {
-        const la = team.labAssignments.find(
-          (a: TeamInfo['labAssignments'][0]) => a.round.roundOrder === currentRound.roundOrder
-        );
-        // The round ID might be in the URL params or we need to fetch it
-        // Since we have the round relationship but not the UUID, let's get it from mentor assignments
-        if (!actualRoundId && la) {
-          // We'll get it from the reviews API which requires round UUID
-          // For now, use the roundId from searchParams
-        }
-      }
-
-      // If roundId is not a UUID, we need the actual UUID from the API
-      // The roundId from searchParams should be a UUID passed by the lab queue page
-      if (!actualRoundId) {
-        toast.error('Missing round context. Please navigate from your lab queue.');
-        isDraft ? setSavingDraft(false) : setSubmitting(false);
-        return;
-      }
-
-      const payload = {
-        teamId,
-        roundId: actualRoundId,
-        scores,
-        strengths: strengths || undefined,
-        weaknesses: weaknesses || 'N/A',
-        overallComments: overallComments || undefined,
-        verdict: verdict || 'hold',
-        isDraft,
-        suggestions: suggestions.filter(s => s.text.trim().length > 0).map((s, i) => ({
-          text: s.text.trim(),
-          category: s.category,
-          orderIndex: i,
-        })),
-        suggestionStatuses: !isDraft && previousSuggestions.length > 0
-          ? suggestionStatuses
-              .filter(s => s.status)
-              .map(s => ({
-                suggestionId: s.suggestionId,
-                status: s.status as SuggestionStatus,
-              }))
-          : undefined,
-      };
-
-      await apiClient.post('/reviews', payload);
-
-      toast.success(isDraft ? 'Draft saved successfully' : 'Review submitted successfully!');
-
-      if (!isDraft) {
-        router.back();
-      }
-    } catch (err: unknown) {
-      const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Failed to submit review';
-      toast.error(message);
-    } finally {
-      setSavingDraft(false);
-      setSubmitting(false);
+    let actualRoundId = roundId;
+    if (team?.labAssignments && currentRound) {
+      const la = team.labAssignments.find(
+        (a: TeamInfo['labAssignments'][0]) => a.round.roundOrder === currentRound.roundOrder
+      );
     }
+
+    if (!actualRoundId) {
+      toast.error('Missing round context. Please navigate from your lab queue.');
+      return;
+    }
+
+    const payload = {
+      teamId,
+      roundId: actualRoundId,
+      scores,
+      strengths: strengths || undefined,
+      weaknesses: weaknesses || 'N/A',
+      overallComments: overallComments || undefined,
+      verdict: verdict || 'hold',
+      isDraft,
+      suggestions: suggestions.filter(s => s.text.trim().length > 0).map((s, i) => ({
+        text: s.text.trim(),
+        category: s.category,
+        orderIndex: i,
+      })),
+      suggestionStatuses: !isDraft && previousSuggestions.length > 0
+        ? suggestionStatuses
+            .filter(s => s.status)
+            .map(s => ({
+              suggestionId: s.suggestionId,
+              status: s.status as SuggestionStatus,
+            }))
+        : undefined,
+    };
+
+    submitMutation.mutate({ payload, isDraft });
   };
 
   // ─── Loading state ────────────────────────────────────────
@@ -734,18 +734,18 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
                 <Button
                   variant="outline"
                   onClick={() => handleSubmit(true)}
-                  disabled={savingDraft || submitting}
+                  disabled={submitMutation.isPending}
                   className="gap-2"
                 >
-                  {savingDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {submitMutation.isPending && submitMutation.variables?.isDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Draft
                 </Button>
                 <Button
                   onClick={() => handleSubmit(false)}
-                  disabled={submitting || savingDraft}
+                  disabled={submitMutation.isPending}
                   className="gap-2 bg-[#1A56DB] hover:bg-[#1044A5] min-w-[160px]"
                 >
-                  {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {submitMutation.isPending && !submitMutation.variables?.isDraft ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   Submit Review
                 </Button>
               </>

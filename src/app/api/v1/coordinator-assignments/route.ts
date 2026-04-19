@@ -43,7 +43,7 @@ export async function GET(request: Request) {
         )
         .orderBy(desc(coordinatorAssignments.assignedAt));
       
-      const ids = results.map(r => r.coordinator_assignments.id);
+      const ids = results.map(r => (r as any).coordinator_assignments?.id || (r as any).id).filter(Boolean) as string[];
       
       if (ids.length === 0) {
           finalAssignments = [];

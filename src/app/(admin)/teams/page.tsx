@@ -31,9 +31,9 @@ interface Team {
 interface Meta { page: number; limit: number; total: number; totalPages: number; }
 
 const ATTENDANCE_STYLES: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
-  registered: { label: 'Registered', color: 'bg-gray-100 text-gray-600', icon: Clock },
-  checked_in: { label: 'Checked In', color: 'bg-green-100 text-green-700', icon: CheckCircle },
-  no_show: { label: 'No Show', color: 'bg-red-100 text-red-600', icon: XCircle },
+  registered: { label: 'Registered', color: 'bg-gray-500/10 text-gray-400 border border-gray-500/20', icon: Clock },
+  checked_in: { label: 'Checked In', color: 'bg-green-500/10 text-green-400 border border-green-500/20', icon: CheckCircle },
+  no_show: { label: 'No Show', color: 'bg-red-500/10 text-red-400 border border-red-500/20', icon: XCircle },
 };
 
 export default function TeamsPage() {
@@ -68,25 +68,25 @@ export default function TeamsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Teams</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{meta.total} team{meta.total !== 1 ? 's' : ''} total</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Teams</h1>
+          <p className="text-sm text-gray-400 mt-1">{meta.total} team{meta.total !== 1 ? 's' : ''} total</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push('/teams/import')} className="gap-2">Import CSV</Button>
-          <Button variant="ghost" size="sm" onClick={() => fetchTeams(meta.page)} disabled={loading}><RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></Button>
+          <Button variant="outline" size="sm" onClick={() => router.push('/teams/import')} className="gap-2 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white">Import CSV</Button>
+          <Button variant="ghost" size="sm" onClick={() => fetchTeams(meta.page)} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/5"><RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></Button>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input placeholder="Search by team or project name..." className="pl-9 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Input placeholder="Search by team or project name..." className="pl-9 h-9 bg-white/5 border-white/10 text-white placeholder:text-gray-500 focus-visible:ring-blue-500" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300"
+          className="h-9 px-3 rounded-lg border border-white/10 bg-[#111] text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">All attendance</option>
           <option value="registered">Registered</option>
@@ -97,35 +97,46 @@ export default function TeamsPage() {
 
       {/* Teams List */}
       {loading ? (
-        <div className="space-y-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl bg-white/5" />)}
+        </div>
       ) : teams.length === 0 ? (
-        <Card><CardContent className="py-14 text-center text-gray-400">
-          <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
-          <p className="font-medium">No teams found</p>
+        <Card><CardContent className="py-14 text-center text-gray-500">
+          <Users className="w-8 h-8 mx-auto mb-2 opacity-50 text-gray-500" />
+          <p className="font-medium text-white">No teams found</p>
           <p className="text-sm mt-1">{search ? 'Try adjusting your search.' : 'Import teams from CSV or create an event first.'}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => router.push('/teams/import')}>Import CSV</Button>
+          <Button variant="outline" size="sm" className="mt-4 bg-transparent border-white/10 text-white hover:bg-white/5" onClick={() => router.push('/teams/import')}>Import CSV</Button>
         </CardContent></Card>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {teams.map((team, i) => {
             const att = ATTENDANCE_STYLES[team.attendanceStatus] ?? ATTENDANCE_STYLES.registered;
             const Icon = att.icon;
             return (
-              <motion.div key={team.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}>
+              <motion.div key={team.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.025 }}>
                 <Link href={`/teams/${team.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{team.teamName}</h3>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${att.color}`}>
-                            <Icon className="w-3 h-3" />{att.label}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5 truncate">{team.projectTitle}</p>
-                        <p className="text-xs text-gray-400">{team.department} · {team.collegeName}</p>
+                  <Card className="h-full flex flex-col cursor-pointer hover:shadow-[0_0_15px_rgba(37,99,235,0.1)] group">
+                    <CardContent className="p-6 flex flex-col h-full gap-4 relative">
+                      <ExternalLink className="absolute top-6 right-6 w-4 h-4 text-gray-500 group-hover:text-blue-400 transition-colors" />
+                      
+                      <div className="flex-1 min-w-0 pr-6">
+                         <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 mb-3 ${att.color}`}>
+                           <Icon className="w-3 h-3" />{att.label}
+                         </span>
+                        <h3 className="font-semibold text-lg text-white tracking-tight mb-1 truncate">{team.teamName}</h3>
+                        <p className="text-sm text-gray-400 leading-snug line-clamp-2">{team.projectTitle}</p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-gray-300 flex-shrink-0" />
+
+                      <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between">
+                        <div>
+                          <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Department</p>
+                          <p className="text-sm text-gray-300 font-medium truncate">{team.department}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">College</p>
+                          <p className="text-sm text-gray-300 font-medium truncate max-w-[120px]">{team.collegeName}</p>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </Link>
@@ -137,11 +148,11 @@ export default function TeamsPage() {
 
       {/* Pagination */}
       {meta.totalPages > 1 && (
-        <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between pt-4 border-t border-white/10">
           <p className="text-sm text-gray-500">Page {meta.page} of {meta.totalPages}</p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => fetchTeams(meta.page - 1)} disabled={meta.page <= 1}><ChevronLeft className="w-4 h-4" /></Button>
-            <Button variant="outline" size="sm" onClick={() => fetchTeams(meta.page + 1)} disabled={meta.page >= meta.totalPages}><ChevronRight className="w-4 h-4" /></Button>
+            <Button variant="outline" size="sm" onClick={() => fetchTeams(meta.page - 1)} disabled={meta.page <= 1} className="bg-transparent border-white/10 text-white hover:bg-white/5 hover:text-white"><ChevronLeft className="w-4 h-4" /></Button>
+            <Button variant="outline" size="sm" onClick={() => fetchTeams(meta.page + 1)} disabled={meta.page >= meta.totalPages} className="bg-transparent border-white/10 text-white hover:bg-white/5 hover:text-white"><ChevronRight className="w-4 h-4" /></Button>
           </div>
         </div>
       )}

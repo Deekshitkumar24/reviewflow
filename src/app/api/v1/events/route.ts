@@ -65,9 +65,11 @@ export async function POST(request: Request) {
     if (validation.error) return validation.error;
     const data = validation.data!;
 
-    // Create event and rounds in a transaction
-    const newEvent = await db.transaction(async (tx) => {
-      const inserted = await tx.insert(events).values({
+    // neon-http does not support .transaction(), so we do sequential inserts with manual rollback
+    let e: any;
+    let newEvent;
+    try {
+      const inserted = await db.insert(events).values({
         eventName: data.eventName,
         organizerName: data.organizerName,
         description: data.description || null,
@@ -79,8 +81,8 @@ export async function POST(request: Request) {
         allowMultiMentorReview: data.allowMultiMentorReview,
         createdById: user.sub,
       }).returning();
-
-      const e = inserted[0];
+      
+      e = inserted[0];
 
       const roundInserts = data.rounds.map(r => ({
         eventId: e.id,
@@ -89,10 +91,16 @@ export async function POST(request: Request) {
         status: 'pending',
       }));
 
-      const createdRounds = await tx.insert(rounds).values(roundInserts).returning();
+      const createdRounds = await db.insert(rounds).values(roundInserts).returning();
 
-      return { ...e, rounds: createdRounds };
-    });
+      newEvent = { ...e, rounds: createdRounds };
+    } catch (error) {
+      if (e?.id) {
+        // Rollback event if rounds failed
+        await db.delete(events).where(eq(events.id, e.id));
+      }
+      throw error;
+    }
 
     await createAuditLog({
       userId: user.sub,

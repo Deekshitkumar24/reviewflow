@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import apiClient from '@/lib/apiClient';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface EventOption { id: string; eventName: string; status: string; }
 interface LabOption { id: string; labName: string; }
@@ -38,24 +39,21 @@ interface MentorAssignment {
   roundName: string;
 }
 
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
 export default function AssignmentsPage() {
   const searchParams = useSearchParams();
   const eventIdParam = searchParams.get('eventId') ?? '';
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<'mentors' | 'coordinators'>('mentors');
-  
-  const [events, setEvents] = useState<EventOption[]>([]);
   const [selectedEventId, setSelectedEventId] = useState(eventIdParam);
   
-  const [mentorAssignments, setMentorAssignments] = useState<MentorAssignment[]>([]);
-  const [coordAssignments, setCoordAssignments] = useState<CoordinatorAssignment[]>([]);
-  
-  const [loading, setLoading] = useState(true);
-
   // Dialog state
   const [showAssignMentor, setShowAssignMentor] = useState(false);
   const [showAssignCoord, setShowAssignCoord] = useState(false);
   const [saving, setSaving] = useState(false);
+
 
   // Dropdown options
   const [labs, setLabs] = useState<LabOption[]>([]);
@@ -67,12 +65,18 @@ export default function AssignmentsPage() {
   const [mentorForm, setMentorForm] = useState({ mentorId: '', labId: '', roundId: '' });
   const [coordForm, setCoordForm] = useState({ coordinatorId: '', labId: '' });
 
+  const { data: eventsData } = useQuery({
+    queryKey: ['events', 'for-dropdown'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/events?limit=50');
+      return data.data as EventOption[];
+    },
+  });
+  const events = eventsData || [];
+
   useEffect(() => {
-    apiClient.get('/events?limit=50').then(({ data }) => {
-      setEvents(data.data ?? []);
-      if (!selectedEventId && data.data?.[0]) setSelectedEventId(data.data[0].id);
-    });
-  }, []);
+    if (!selectedEventId && events.length > 0) setSelectedEventId(events[0].id);
+  }, [events, selectedEventId]);
 
   useEffect(() => {
     if (showAssignMentor || showAssignCoord) {
@@ -89,29 +93,33 @@ export default function AssignmentsPage() {
     }
   }, [showAssignMentor, showAssignCoord, selectedEventId]);
 
-  const fetchData = useCallback(async () => {
-    if (!selectedEventId) { 
-      setMentorAssignments([]);
-      setCoordAssignments([]);
-      setLoading(false); 
-      return; 
-    }
-    setLoading(true);
-    try {
+  const { data: assignmentsData, isLoading: loading, refetch: fetchData } = useQuery({
+    queryKey: ['assignments', selectedEventId],
+    queryFn: async () => {
+      if (!selectedEventId) return { mentor: [], coord: [] };
       const [mRes, cRes] = await Promise.all([
         apiClient.get(`/mentor-assignments?eventId=${selectedEventId}`),
         apiClient.get(`/coordinator-assignments?eventId=${selectedEventId}`)
       ]);
-      setMentorAssignments(mRes.data.data ?? []);
-      setCoordAssignments(cRes.data.data ?? []);
-    } catch {
-      toast.error('Failed to load assignments');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
+      return {
+        mentor: (mRes.data.data ?? []) as MentorAssignment[],
+        coord: (cRes.data.data ?? []) as CoordinatorAssignment[]
+      };
+    },
+    enabled: !!selectedEventId,
+    refetchInterval: 30000,
+  });
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const mentorAssignments = assignmentsData?.mentor || [];
+  const coordAssignments = assignmentsData?.coord || [];
+
+  const invalidateAssignments = () => {
+    queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    queryClient.invalidateQueries({ queryKey: ['labs'] });
+    queryClient.invalidateQueries({ queryKey: ['mentor', 'dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+  };
 
   const handleAssignMentor = async () => {
     if (!mentorForm.mentorId || !mentorForm.labId || !mentorForm.roundId) {
@@ -123,7 +131,7 @@ export default function AssignmentsPage() {
       toast.success('Mentor assigned successfully');
       setShowAssignMentor(false);
       setMentorForm({ mentorId: '', labId: '', roundId: '' });
-      fetchData();
+      invalidateAssignments();
     } catch (err: any) {
       toast.error(err?.response?.data?.error?.message || 'Failed to assign mentor');
     } finally { setSaving(false); }
@@ -139,7 +147,7 @@ export default function AssignmentsPage() {
       toast.success('Coordinator assigned successfully');
       setShowAssignCoord(false);
       setCoordForm({ coordinatorId: '', labId: '' });
-      fetchData();
+      invalidateAssignments();
     } catch (err: any) {
       toast.error(err?.response?.data?.error?.message || 'Failed to assign coordinator');
     } finally { setSaving(false); }
@@ -150,7 +158,7 @@ export default function AssignmentsPage() {
     try {
       await apiClient.delete(`/mentor-assignments?mentorId=${mentorId}&labId=${labId}&roundId=${roundId}`);
       toast.success('Assignment removed');
-      fetchData();
+      invalidateAssignments();
     } catch { toast.error('Failed to remove assignment'); }
   };
 
@@ -159,7 +167,7 @@ export default function AssignmentsPage() {
     try {
       await apiClient.delete(`/coordinator-assignments?coordinatorId=${coordinatorId}&labId=${labId}`);
       toast.success('Assignment removed');
-      fetchData();
+      invalidateAssignments();
     } catch { toast.error('Failed to remove assignment'); }
   };
 
@@ -172,15 +180,16 @@ export default function AssignmentsPage() {
         </div>
         <div className="flex items-center gap-2">
            {events.length > 0 && (
-            <select
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300 max-w-[200px]"
-            >
-              {events.map((e) => <option key={e.id} value={e.id}>{e.eventName}</option>)}
-            </select>
+            <Select value={selectedEventId} onValueChange={(v) => setSelectedEventId(v || '')}>
+              <SelectTrigger className="w-[200px] h-9">
+                <SelectValue placeholder="Select Event" />
+              </SelectTrigger>
+              <SelectContent>
+                {events.map((e) => <SelectItem key={e.id} value={e.id}>{e.eventName}</SelectItem>)}
+              </SelectContent>
+            </Select>
           )}
-          <Button variant="ghost" size="sm" onClick={fetchData} disabled={loading}><RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></Button>
+          <Button variant="ghost" size="sm" onClick={() => fetchData()} disabled={loading}><RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></Button>
         </div>
       </div>
 
@@ -267,24 +276,30 @@ export default function AssignmentsPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Mentor</Label>
-              <select className="w-full h-9 rounded-md border px-3 text-sm" value={mentorForm.mentorId} onChange={(e) => setMentorForm({...mentorForm, mentorId: e.target.value})}>
-                <option value="">Select Mentor</option>
-                {mentors.map(m => <option key={m.id} value={m.id}>{m.fullName} ({m.email})</option>)}
-              </select>
+              <Select value={mentorForm.mentorId} onValueChange={(v) => setMentorForm({...mentorForm, mentorId: v || ''})}>
+                <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Mentor" /></SelectTrigger>
+                <SelectContent>
+                  {mentors.map(m => <SelectItem key={m.id} value={m.id}>{m.fullName} ({m.email})</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Lab</Label>
-              <select className="w-full h-9 rounded-md border px-3 text-sm" value={mentorForm.labId} onChange={(e) => setMentorForm({...mentorForm, labId: e.target.value})}>
-                <option value="">Select Lab</option>
-                {labs.map(l => <option key={l.id} value={l.id}>{l.labName}</option>)}
-              </select>
+              <Select value={mentorForm.labId} onValueChange={(v) => setMentorForm({...mentorForm, labId: v || ''})}>
+                <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Lab" /></SelectTrigger>
+                <SelectContent>
+                  {labs.map(l => <SelectItem key={l.id} value={l.id}>{l.labName}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Round</Label>
-              <select className="w-full h-9 rounded-md border px-3 text-sm" value={mentorForm.roundId} onChange={(e) => setMentorForm({...mentorForm, roundId: e.target.value})}>
-                <option value="">Select Round</option>
-                {rounds.map(r => <option key={r.id} value={r.id}>{r.roundName}</option>)}
-              </select>
+              <Select value={mentorForm.roundId} onValueChange={(v) => setMentorForm({...mentorForm, roundId: v || ''})}>
+                <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Round" /></SelectTrigger>
+                <SelectContent>
+                  {rounds.map(r => <SelectItem key={r.id} value={r.id}>{r.roundName}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
@@ -301,17 +316,21 @@ export default function AssignmentsPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Coordinator</Label>
-              <select className="w-full h-9 rounded-md border px-3 text-sm" value={coordForm.coordinatorId} onChange={(e) => setCoordForm({...coordForm, coordinatorId: e.target.value})}>
-                <option value="">Select Coordinator</option>
-                {coordinators.map(c => <option key={c.id} value={c.id}>{c.fullName} ({c.email})</option>)}
-              </select>
+              <Select value={coordForm.coordinatorId} onValueChange={(v) => setCoordForm({...coordForm, coordinatorId: v || ''})}>
+                <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Coordinator" /></SelectTrigger>
+                <SelectContent>
+                  {coordinators.map(c => <SelectItem key={c.id} value={c.id}>{c.fullName} ({c.email})</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Lab Managed</Label>
-              <select className="w-full h-9 rounded-md border px-3 text-sm" value={coordForm.labId} onChange={(e) => setCoordForm({...coordForm, labId: e.target.value})}>
-                <option value="">Select Lab</option>
-                {labs.map(l => <option key={l.id} value={l.id}>{l.labName}</option>)}
-              </select>
+              <Select value={coordForm.labId} onValueChange={(v) => setCoordForm({...coordForm, labId: v || ''})}>
+                <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Lab" /></SelectTrigger>
+                <SelectContent>
+                  {labs.map(l => <SelectItem key={l.id} value={l.id}>{l.labName}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

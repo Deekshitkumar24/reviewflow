@@ -26,6 +26,7 @@ export default function StudentIssuesPage() {
       return res.data.data;
     },
     enabled: !!team?.teamId,
+    refetchInterval: 15000,
   });
 
   const createMutation = useMutation({
@@ -36,6 +37,11 @@ export default function StudentIssuesPage() {
     onSuccess: () => {
       toast.success('Issue reported');
       queryClient.invalidateQueries({ queryKey: ['student-issues'] });
+      queryClient.invalidateQueries({ queryKey: ['student-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
       setShowForm(false);
       setDescription('');
     },
@@ -50,14 +56,6 @@ export default function StudentIssuesPage() {
     }
     createMutation.mutate({ category, description });
   };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -107,7 +105,11 @@ export default function StudentIssuesPage() {
       )}
 
       {/* Issues List */}
-      {!issues || issues.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+        </div>
+      ) : !issues || issues.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-sm">No issues reported yet.</p>

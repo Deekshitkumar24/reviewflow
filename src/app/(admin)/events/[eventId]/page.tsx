@@ -122,13 +122,15 @@ function ConfirmDialog({
 }
 
 // ─── Page ────────────────────────────────────────────────────
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
 export default function EventDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAppStore();
   const eventId = params.eventId as string;
-  const [event, setEvent] = useState<EventDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Lifecycle dialog state
@@ -137,16 +139,14 @@ export default function EventDetailPage() {
   const [dialogLoading, setDialogLoading] = useState(false);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
-  const fetchEvent = async () => {
-    setLoading(true);
-    try {
+  const { data: event, isLoading: loading, refetch: fetchEvent } = useQuery({
+    queryKey: ['events', eventId],
+    queryFn: async () => {
       const { data } = await apiClient.get(`/events/${eventId}`);
-      setEvent(data.data);
-    } catch { toast.error('Failed to load event'); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { fetchEvent(); }, [eventId]);
+      return data.data as EventDetail;
+    },
+    refetchInterval: 30000,
+  });
 
   // ─── Round actions ────────────────────────────────────────
   const handleRoundAction = async (roundId: string, action: 'open' | 'locked') => {
@@ -154,6 +154,9 @@ export default function EventDetailPage() {
     try {
       await apiClient.patch(`/rounds/${roundId}`, { status: action });
       toast.success(`Round ${action === 'open' ? 'opened' : 'locked'} successfully`);
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
       fetchEvent();
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Action failed');
@@ -166,6 +169,8 @@ export default function EventDetailPage() {
     try {
       const { data } = await apiClient.post(`/rounds/${roundId}/advance`, {});
       toast.success(data.data.message);
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
       fetchEvent();
     } catch (err: unknown) {
       toast.error((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Advance failed');
@@ -180,6 +185,10 @@ export default function EventDetailPage() {
       await apiClient.patch(`/events/${eventId}/status`, { status: newStatus, force });
       toast.success(`Event ${newStatus} successfully`);
       setDialog(null);
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
       fetchEvent();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Status change failed';
@@ -256,13 +265,20 @@ export default function EventDetailPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${STATUS_BADGE[event.status] ?? STATUS_BADGE.draft}`}>{event.status}</span>
-          <Button variant="outline" size="sm" onClick={fetchEvent} disabled={loading}><RefreshCcw className="w-4 h-4" /></Button>
+          <Button variant="outline" size="sm" onClick={() => fetchEvent()} disabled={loading}><RefreshCcw className="w-4 h-4" /></Button>
           {/* Results link for completed/active */}
           {(event.status === 'completed' || event.status === 'active') && (
             <Button variant="outline" size="sm" onClick={() => router.push(`/results/${event.id}`)} className="gap-1.5">
               <Trophy className="w-4 h-4" />Results
             </Button>
           )}
+          {/* Quick links */}
+          <Button variant="outline" size="sm" onClick={() => router.push(`/labs?eventId=${event.id}`)} className="gap-1.5 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900">
+            <FlaskConical className="w-4 h-4" />Labs
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => router.push(`/assignments?eventId=${event.id}`)} className="gap-1.5 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900">
+            <Users className="w-4 h-4" />Assignments
+          </Button>
         </div>
       </div>
 

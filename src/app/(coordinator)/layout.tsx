@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
+import { GlobalSearch } from '@/components/app/GlobalSearch';
 
 const COORD_NAV = [
   { href: '/coordinator/dashboard', label: 'Dashboard', icon: ClipboardCheck },
   { href: '/coordinator/checkin', label: 'Check-In', icon: ClipboardCheck },
   { href: '/coordinator/register', label: 'Register', icon: UserPlus },
-  { href: '/coordinator/labs', label: 'Labs', icon: FlaskConical },
   { href: '/coordinator/attendance', label: 'Attendance', icon: Clock },
+  { href: '/coordinator/issues', label: 'Issues', icon: AlertCircle },
 ];
 
 export default function CoordinatorLayout({ children }: { children: React.ReactNode }) {
@@ -64,12 +65,17 @@ export default function CoordinatorLayout({ children }: { children: React.ReactN
       <header className="sticky top-0 z-20 h-14 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto h-full flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center hidden sm:flex">
               <Shield className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900 dark:text-gray-100 text-sm">Coordinator</span>
+            <span className="font-bold text-gray-900 dark:text-gray-100 text-sm hidden sm:inline">Coordinator</span>
           </div>
-          <div className="flex items-center gap-2">
+          
+          <div className="flex-1 mx-4 max-w-sm">
+            <GlobalSearch />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <Avatar className="h-8 w-8 cursor-pointer" onClick={() => router.push('/profile')} title="My profile">
               <AvatarFallback className="bg-emerald-500 text-white text-xs">{initials}</AvatarFallback>
             </Avatar>

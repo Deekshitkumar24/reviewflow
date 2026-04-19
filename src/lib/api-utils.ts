@@ -35,7 +35,17 @@ export async function withAuth(
     return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
   }
 
-  return handler(user);
+  try {
+    return await handler(user);
+  } catch (error: any) {
+    console.error('[API Error in withAuth]:', error);
+    return errorResponse(
+      'INTERNAL_SERVER_ERROR', 
+      'An unexpected error occurred during processing', 
+      500, 
+      [{ field: 'server', message: error?.message || 'Unknown error' }]
+    );
+  }
 }
 
 // ═══════════════════════════════════════

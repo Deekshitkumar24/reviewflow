@@ -1,14 +1,20 @@
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 import * as schema from './schema/index';
 
-if (!process.env.DATABASE_URL) {
+const connectionUrl = process.env.DATABASE_URL;
+if (!connectionUrl) {
   throw new Error('DATABASE_URL environment variable is missing.');
 }
 
-// Ensure ?pgbouncer=true or no pooling based on Neon connection URL
-// Usually the standard connection pool url is provided by Neon.
-const sql = neon(process.env.DATABASE_URL);
+// Use node-postgres Pool instead of Neon HTTP driver.
+// The Neon HTTP driver relies on fetch(), which breaks under
+// Next.js Turbopack on Windows ("TypeError: fetch failed").
+// A standard TCP pool connection works reliably everywhere.
+const pool = new Pool({
+  connectionString: connectionUrl,
+  max: 10,
+});
 
 // Export the singleton DB instance
-export const db = drizzle(sql, { schema });
+export const db = drizzle(pool, { schema });

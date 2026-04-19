@@ -13,7 +13,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const memberSchema = z.object({
   fullName: z.string().min(1, 'Required'),
@@ -58,13 +58,14 @@ export default function CoordinatorRegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const eventId = searchParams.get('eventId') || '';
+  const queryClient = useQueryClient();
   const user = useAppStore(s => s.user);
 
   const { data: events } = useQuery({
     queryKey: ['events-list'],
     queryFn: async () => {
-      const res = await apiClient.get('/events?status=active&limit=50');
-      return res.data.data;
+      const res = await apiClient.get('/events?limit=50');
+      return res.data.data.filter((e: any) => e.status === 'active' || e.status === 'draft');
     },
   });
 
@@ -103,6 +104,11 @@ export default function CoordinatorRegisterPage() {
         eventId: selectedEventId,
       });
       toast.success(`Team "${res.data.data.team.teamName}" registered successfully!`);
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      queryClient.invalidateQueries({ queryKey: ['labs'] });
+      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
       router.push('/coordinator/checkin');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { code?: string; message?: string; details?: { field: string; message: string }[] } } } };

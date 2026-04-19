@@ -29,25 +29,22 @@ interface LabProgress {
   lab: AssignedLab;
   totalTeams: number;
   reviewedCount: number;
+  readyCount: number;
   progress: number;
 }
+
+import { useQuery } from '@tanstack/react-query';
 
 export default function MentorDashboard() {
   const router = useRouter();
   const { user } = useAppStore();
-  const [labsData, setLabsData] = useState<LabProgress[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Get mentor assignments — mentor role filter applied server-side
+  const { data: fetchedLabsData, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['mentor', 'dashboard'],
+    queryFn: async () => {
       const { data: assnData } = await apiClient.get('/mentor-assignments');
       const assignments: AssignedLab[] = assnData.data ?? [];
 
-      // For each assignment, get the team queue + review counts
       const withProgress = await Promise.all(
         assignments.map(async (asn) => {
           try {
@@ -56,29 +53,33 @@ export default function MentorDashboard() {
               apiClient.get(`/reviews?labId=${asn.labId}&roundId=${asn.roundId}&isDraft=false&limit=200`),
             ]);
             const totalTeams = teamsRes.data.meta?.meta?.total ?? (teamsRes.data.data?.length ?? 0);
+            const teamsList = teamsRes.data.data ?? [];
+            const readyCount = teamsList.filter((t: any) => t.isProjectReady && t.isPptReady && t.isDemoReady && t.isFinalSubmissionReady).length;
             const reviewedCount = reviewsRes.data.meta?.meta?.total ?? (reviewsRes.data.data?.length ?? 0);
             const progress = totalTeams > 0 ? Math.round((reviewedCount / totalTeams) * 100) : 0;
-            return { lab: asn, totalTeams, reviewedCount, progress };
+            return { lab: asn, totalTeams, reviewedCount, readyCount, progress };
           } catch {
-            return { lab: asn, totalTeams: 0, reviewedCount: 0, progress: 0 };
+            return { lab: asn, totalTeams: 0, reviewedCount: 0, readyCount: 0, progress: 0 };
           }
         })
       );
-      setLabsData(withProgress);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Failed to load dashboard';
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return withProgress;
+    },
+    refetchInterval: 30000,
+  });
 
-  useEffect(() => { fetchData(); }, []);
+  const labsData = fetchedLabsData || [];
+
+  const error = queryError 
+    ? (queryError as any)?.response?.data?.error?.message ?? 'Failed to load dashboard' 
+    : null;
+
+  const fetchData = () => refetch();
 
   const activeAssignments = labsData.filter((l) => l.lab.roundStatus === 'open');
   const totalReviewed = labsData.reduce((s, l) => s + l.reviewedCount, 0);
   const totalPending = labsData.reduce((s, l) => s + (l.totalTeams - l.reviewedCount), 0);
+  const totalReady = labsData.reduce((s, l) => s + l.readyCount, 0);
   const activeRoundName = activeAssignments[0]?.lab.roundName ?? null;
 
   return (
@@ -106,27 +107,40 @@ export default function MentorDashboard() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card><CardContent className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-950/30 flex items-center justify-center">
+      <div className="grid grid-cols-3 gap-3">
+        <Card><CardContent className="p-4 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-green-50 dark:bg-green-950/30 flex items-center justify-center">
             <CheckCircle2 className="w-5 h-5 text-green-600" />
           </div>
           <div>
             <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {loading ? <Skeleton className="w-8 h-7" /> : totalReviewed}
+              {loading ? <Skeleton className="w-8 h-7 mx-auto sm:mx-0" /> : totalReviewed}
             </p>
             <p className="text-xs text-gray-500">Reviewed</p>
           </div>
         </CardContent></Card>
-        <Card><CardContent className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
+        
+        <Card><CardContent className="p-4 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
             <Clock className="w-5 h-5 text-amber-600" />
           </div>
           <div>
             <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {loading ? <Skeleton className="w-8 h-7" /> : totalPending}
+              {loading ? <Skeleton className="w-8 h-7 mx-auto sm:mx-0" /> : totalPending}
             </p>
             <p className="text-xs text-gray-500">Pending</p>
+          </div>
+        </CardContent></Card>
+
+        <Card><CardContent className="p-4 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center">
+            <CheckCircle2 className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              {loading ? <Skeleton className="w-8 h-7 mx-auto sm:mx-0" /> : totalReady}
+            </p>
+            <p className="text-xs text-gray-500">Teams Ready</p>
           </div>
         </CardContent></Card>
       </div>

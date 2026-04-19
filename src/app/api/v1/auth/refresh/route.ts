@@ -25,10 +25,16 @@ export async function POST() {
     return res;
   }
 
-  const user = await db.query.users.findFirst({
-    where: (users, { eq, and, isNull }) => and(eq(users.id, payload.sub), isNull(users.deletedAt), eq(users.status, 'active')),
-    with: { role: true },
-  });
+  let user;
+  try {
+    user = await db.query.users.findFirst({
+      where: (users, { eq, and, isNull }) => and(eq(users.id, payload.sub), isNull(users.deletedAt), eq(users.status, 'active')),
+      with: { role: true },
+    });
+  } catch (error: any) {
+    console.error('Database connection failed during token refresh:', error);
+    return errorResponse('DATABASE_ERROR', 'A database connection issue occurred. Please try again later.', 500);
+  }
 
   if (!user) return errorResponse('USER_NOT_FOUND', 'User not found', 401);
 

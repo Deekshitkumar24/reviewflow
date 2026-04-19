@@ -23,23 +23,23 @@ interface CoordStats {
   issuesRaised: number;
 }
 
+import { useQuery } from '@tanstack/react-query';
+
 export default function CoordinatorDashboardPage() {
-  const [stats, setStats] = useState<CoordStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchStats = async () => {
-    setLoading(true);
-    try {
+  const { data: stats, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: ['coordinator', 'dashboard'],
+    queryFn: async () => {
       const { data } = await apiClient.get('/coordinator/dashboard');
-      setStats(data.data);
-    } catch {
-      toast.error('Failed to load dashboard metrics');
-    } finally {
-      setLoading(false);
-    }
-  };
+      return data.data as CoordStats;
+    },
+    refetchInterval: 30000,
+  });
 
-  useEffect(() => { fetchStats(); }, []);
+  if (isError) {
+    toast.error('Failed to load dashboard metrics');
+  }
+
+  const fetchStats = () => refetch();
 
   const kpis = stats ? [
     { label: 'Registered Teams', value: stats.totalTeams, icon: Users, color: 'text-blue-600' },

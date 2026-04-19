@@ -19,10 +19,16 @@ export async function POST(request: Request) {
   if (validation.error) return validation.error;
   const { email, password } = validation.data!;
 
-  const user = await db.query.users.findFirst({
-    where: (users, { eq, and, isNull }) => and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)),
-    with: { role: true },
-  });
+  let user;
+  try {
+    user = await db.query.users.findFirst({
+      where: (users, { eq, and, isNull }) => and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)),
+      with: { role: true },
+    });
+  } catch (error: any) {
+    console.error('Database connection or query failed during login:', error);
+    return errorResponse('DATABASE_ERROR', 'A temporary database issue occurred while attempting to log in. Please try again later.', 500);
+  }
 
   if (!user) return errorResponse('INVALID_CREDENTIALS', 'Invalid email or password', 401);
   if (user.status === 'disabled') return errorResponse('ACCOUNT_DISABLED', 'Account disabled. Contact your administrator.', 401);

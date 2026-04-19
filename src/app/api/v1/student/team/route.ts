@@ -15,7 +15,13 @@ export async function GET(request: Request) {
         isN(t.deletedAt),
       ),
       with: {
-        members: true,
+        members: {
+          with: {
+            attendance: {
+              with: { submission: { with: { slot: { columns: { slotName: true, slotDate: true, startTime: true, dueTime: true } } } } }
+            }
+          }
+        },
         lab: { columns: { labName: true, building: true, floor: true } },
         event: { columns: { eventName: true, eventDate: true, venue: true, status: true } },
       },
@@ -58,6 +64,12 @@ export async function GET(request: Request) {
         phone: m.phone,
         isLeader: m.isLeader,
         academicYear: m.academicYear,
+        attendance: m.attendance?.map((a: any) => ({
+          isPresent: a.isPresent,
+          slotName: a.submission?.slot?.slotName,
+          slotDate: a.submission?.slot?.slotDate,
+          startTime: a.submission?.slot?.startTime,
+        })) || [],
       })),
     });
   });

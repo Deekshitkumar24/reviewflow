@@ -26,6 +26,7 @@ export default function AttendanceOverviewPage() {
     queryKey: ['attendance-overview', selectedEventId, filterSlotId, filterLabId],
     queryFn: async () => (await apiClient.get(`/attendance-overview?${params}`)).data.data,
     enabled: !!selectedEventId,
+    refetchInterval: 15000,
   });
 
   const handleExport = async () => {

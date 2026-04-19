@@ -97,9 +97,24 @@ export async function clearRefreshTokenCookie() {
 // Auth Helpers for API Routes
 // ═══════════════════════════════════════
 export async function getAuthUser(request: Request): Promise<JWTPayload | null> {
+  let token = '';
+
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) return null;
-  const token = authHeader.slice(7);
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  }
+
+  // Fallback to cookie if Authorization header is missing (e.g., hard refresh dropping Zustand state)
+  if (!token) {
+    const cookieHeader = request.headers.get('cookie');
+    if (cookieHeader) {
+      const match = cookieHeader.match(/accessToken=([^;]+)/);
+      if (match) token = match[1];
+    }
+  }
+
+  if (!token) return null;
+
   return verifyAccessToken(token);
 }
 

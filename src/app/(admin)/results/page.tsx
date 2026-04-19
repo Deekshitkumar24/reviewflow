@@ -41,9 +41,9 @@ export default function ResultsIndexPage() {
 
   if (loading) return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <Skeleton className="h-10 w-48" />
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-10 w-48 bg-white/5" />
+      <Skeleton className="h-24 w-full rounded-xl bg-white/5" />
+      <Skeleton className="h-24 w-full rounded-xl bg-white/5" />
     </div>
   );
 
@@ -51,22 +51,22 @@ export default function ResultsIndexPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-[#1A56DB]" />
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2 tracking-tight">
+            <Trophy className="w-6 h-6 text-purple-500" />
             Results Management
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Select an active or completed event to manage results and awards.</p>
+          <p className="text-sm text-gray-400 mt-1">Select an active or completed event to manage results and awards.</p>
         </div>
-        <Button variant="outline" size="icon" onClick={loadEvents}><RefreshCcw className="w-4 h-4" /></Button>
+        <Button variant="outline" size="icon" onClick={loadEvents} className="bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5"><RefreshCcw className="w-4 h-4" /></Button>
       </div>
 
       {events.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center text-gray-400">
+        <Card className="border border-white/5 bg-[#111]">
+          <CardContent className="py-16 text-center text-gray-500">
             <Trophy className="w-10 h-10 mx-auto mb-3 opacity-20" />
-            <p className="font-medium text-gray-600 dark:text-gray-300">No Eligible Events Found</p>
+            <p className="font-medium text-white">No Eligible Events Found</p>
             <p className="text-sm mt-1">Activate or complete an event to manage its results.</p>
-            <Button variant="outline" className="mt-4" onClick={() => router.push('/events')}>Go to Events</Button>
+            <Button variant="outline" className="mt-4 bg-transparent border-white/10 text-white hover:bg-white/5 hover:text-white" onClick={() => router.push('/events')}>Go to Events</Button>
           </CardContent>
         </Card>
       ) : (
@@ -74,30 +74,34 @@ export default function ResultsIndexPage() {
           {events.map((event, i) => (
             <motion.div
               key={event.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: i * 0.05 }}
               onClick={() => router.push(`/results/${event.id}`)}
-              className="group cursor-pointer bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:border-[#1A56DB]/50 hover:shadow-md rounded-xl p-5 transition-all flex items-center justify-between"
+              className="group cursor-pointer bg-[#111] border border-white/5 hover:border-blue-500/50 hover:shadow-[0_0_15px_rgba(37,99,235,0.15)] rounded-xl p-5 transition-all flex items-center justify-between"
             >
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  event.status === 'completed' ? 'bg-blue-50 text-blue-600' :
-                  event.status === 'archived' ? 'bg-yellow-50 text-yellow-600' :
-                  'bg-green-50 text-green-600'
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${
+                  event.status === 'completed' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                  event.status === 'archived' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
+                  'bg-green-500/10 text-green-400 border-green-500/20'
                 }`}>
                   <Calendar className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 group-hover:text-[#1A56DB] transition-colors">{event.eventName}</h3>
+                  <h3 className="font-semibold text-white group-hover:text-blue-400 transition-colors tracking-tight text-lg">{event.eventName}</h3>
                   <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                    <span className="capitalize font-medium">{event.status}</span>
+                    <span className={`capitalize font-medium px-2 py-0.5 rounded-full ${
+                      event.status === 'completed' ? 'bg-blue-500/10 text-blue-400' :
+                      event.status === 'archived' ? 'bg-yellow-500/10 text-yellow-400' :
+                      'bg-green-500/10 text-green-400'
+                    }`}>{event.status}</span>
                     <span>•</span>
                     <span>{event.totalRounds} rounds</span>
                   </div>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-[#1A56DB] group-hover:translate-x-1 transition-all" />
+              <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
             </motion.div>
           ))}
         </div>

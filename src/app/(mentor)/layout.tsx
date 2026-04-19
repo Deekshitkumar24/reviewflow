@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
+import { GlobalSearch } from '@/components/app/GlobalSearch';
 
 const MENTOR_NAV = [
   { href: '/mentor/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -69,13 +70,17 @@ export default function MentorLayout({ children }: { children: React.ReactNode }
       <header className="sticky top-0 z-20 h-14 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-5xl mx-auto h-full flex items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#1A56DB] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-[#1A56DB] flex items-center justify-center hidden sm:flex">
               <Shield className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-gray-900 dark:text-gray-100">ReviewFlow</span>
+            <span className="font-bold text-gray-900 dark:text-gray-100 hidden sm:inline">ReviewFlow</span>
           </div>
 
-          <nav className="hidden sm:flex items-center gap-1">
+          <div className="flex-1 mx-4 max-w-sm">
+            <GlobalSearch />
+          </div>
+
+          <nav className="hidden lg:flex items-center gap-1">
             {MENTOR_NAV.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
               return (

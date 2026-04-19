@@ -49,12 +49,14 @@ export default function CoordinatorCheckIn() {
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
     try {
-      const { data } = await apiClient.get('/events?status=active&limit=50');
-      const eventList: EventOption[] = (data.data ?? []).map((e: { id: string; eventName: string; status: string }) => ({
-        id: e.id,
-        eventName: e.eventName,
-        status: e.status,
-      }));
+      const { data } = await apiClient.get('/events?limit=50');
+      const eventList: EventOption[] = (data.data ?? [])
+        .filter((e: any) => e.status === 'active' || e.status === 'draft')
+        .map((e: { id: string; eventName: string; status: string }) => ({
+          id: e.id,
+          eventName: e.eventName,
+          status: e.status,
+        }));
       setEvents(eventList);
       // Auto-select first active event
       if (eventList.length > 0 && !selectedEventId) {

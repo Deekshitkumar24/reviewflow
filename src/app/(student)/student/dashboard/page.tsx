@@ -17,6 +17,7 @@ export default function StudentDashboardPage() {
       return res.data.data;
     },
     enabled: !!team?.teamId,
+    refetchInterval: 15000,
   });
 
   if (isLoading) {
@@ -87,16 +88,37 @@ export default function StudentDashboardPage() {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Team Members</h2>
         </div>
         <div className="divide-y divide-gray-100 dark:divide-gray-800">
-          {data.members?.map((m: { id: string; fullName: string; rollNumber?: string; isLeader: boolean; academicYear?: number }) => (
-            <div key={m.id} className="px-4 py-3 flex items-center justify-between">
+          {data.members?.map((m: any) => (
+            <div key={m.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                   {m.fullName}
-                  {m.isLeader && <span className="ml-2 text-xs text-emerald-600 font-normal">Leader</span>}
+                  {m.isLeader && <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 text-[10px] font-medium">Leader</span>}
                 </p>
-                {m.rollNumber && <p className="text-xs text-gray-400">{m.rollNumber}</p>}
+                {(m.rollNumber || m.academicYear) && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {m.rollNumber} {m.rollNumber && m.academicYear && '·'} {m.academicYear && `Year ${m.academicYear}`}
+                  </p>
+                )}
               </div>
-              {m.academicYear && <span className="text-xs text-gray-400">Year {m.academicYear}</span>}
+              
+              {m.attendance && m.attendance.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {m.attendance.map((att: any, idx: number) => (
+                    <span 
+                      key={idx} 
+                      className={`text-[10px] px-2 py-1 rounded-md font-medium border ${
+                        att.isPresent 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' 
+                          : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
+                      }`}
+                      title={`${att.slotName} (${new Date(att.slotDate).toLocaleDateString()})`}
+                    >
+                      {att.slotName}: {att.isPresent ? 'Present' : 'Absent'}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

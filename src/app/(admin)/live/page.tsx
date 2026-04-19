@@ -38,10 +38,10 @@ interface MonitorData {
 interface EventOption { id: string; eventName: string; status: string; }
 
 const STATUS_COLORS = {
-  complete: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  on_track: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  slow: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  delayed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  complete: 'bg-green-500/10 text-green-400 border border-green-500/20',
+  on_track: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+  slow: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20',
+  delayed: 'bg-red-500/10 text-red-400 border border-red-500/20',
 };
 
 const BAR_COLORS = {
@@ -89,26 +89,30 @@ export default function LiveMonitorPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <Activity className="w-6 h-6 text-[#1A56DB]" />Live Monitor
+          <h1 className="text-2xl font-bold text-white flex items-center gap-3 tracking-tight">
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-full">
+              <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+              <span className="text-xs text-red-400 font-bold uppercase tracking-widest">Live</span>
+            </div>
+            Monitor
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Real-time lab review progress across all labs</p>
+          <p className="text-sm text-gray-400 mt-1">Real-time lab review progress across all labs</p>
         </div>
         <div className="flex items-center gap-2">
           {events.length > 0 && (
             <Select value={eventId} onValueChange={(v) => setEventId(v ?? '')}>
-              <SelectTrigger className="w-52 h-9"><SelectValue placeholder="Select event" /></SelectTrigger>
-              <SelectContent>{events.map((e) => <SelectItem key={e.id} value={e.id}>{e.eventName}</SelectItem>)}</SelectContent>
+              <SelectTrigger className="w-52 h-9 bg-[#111] border-white/10 text-gray-300 focus:ring-blue-500"><SelectValue placeholder="Select event" /></SelectTrigger>
+              <SelectContent className="bg-[#111] border-white/10 text-gray-300">{events.map((e) => <SelectItem key={e.id} value={e.id} className="hover:bg-white/5 focus:bg-white/5 focus:text-white cursor-pointer">{e.eventName}</SelectItem>)}</SelectContent>
             </Select>
           )}
           <Button
             variant={polling ? 'default' : 'outline'} size="sm"
             onClick={() => setPolling(!polling)}
-            className={`gap-2 ${polling ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+            className={`gap-2 ${polling ? 'bg-green-600 hover:bg-green-500 text-white border-0' : 'bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5'}`}
           >
             <Zap className="w-4 h-4" />{polling ? 'Auto (30s)' : 'Auto-refresh'}
           </Button>
-          <Button variant="outline" size="sm" onClick={fetchMonitor} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={fetchMonitor} disabled={loading} className="bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5">
             <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
@@ -116,66 +120,71 @@ export default function LiveMonitorPage() {
 
       {/* Summary KPIs */}
       {data && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
             { label: 'Total Teams', value: data.totalTeams, icon: '👥' },
             { label: 'Checked In', value: data.totalCheckedIn, icon: '✅' },
             { label: 'Reviewed', value: data.totalReviewed, icon: '📋' },
             { label: 'Overall Progress', value: `${data.overallProgress}%`, icon: '📊' },
-          ].map(({ label, value, icon }) => (
-            <Card key={label}><CardContent className="p-4">
-              <p className="text-2xl">{icon}</p>
-              <p className="text-xs text-gray-400 mt-1">{label}</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-            </CardContent></Card>
+          ].map(({ label, value, icon }, i) => (
+            <Card key={label} className="bg-[#111] border-white/5 card-spotlight">
+              <CardContent className="p-5 flex flex-col items-center sm:items-start text-center sm:text-left gap-1">
+                <p className="text-2xl mb-1 opacity-80">{icon}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-widest">{label}</p>
+                <p className="text-3xl font-bold text-white tracking-tighter">{value}</p>
+              </CardContent>
+            </Card>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* Rounded name */}
       {data?.activeRoundName && (
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 rounded-lg px-4 py-2">
-          <Activity className="w-4 h-4 text-blue-500" />
-          Active round: <span className="font-medium text-blue-700 dark:text-blue-400">{data.activeRoundName}</span>
+        <div className="flex items-center gap-2 text-sm text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3">
+          <Activity className="w-4 h-4" />
+          Active round: <span className="font-semibold text-white tracking-tight">{data.activeRoundName}</span>
         </div>
       )}
 
       {/* Lab Cards */}
       {loading && !data ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl bg-white/5" />)}
         </div>
       ) : !data || data.labs.length === 0 ? (
-        <Card><CardContent className="py-14 text-center text-gray-400">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
-          <p>No labs or no active event found. Select an active event above.</p>
-        </CardContent></Card>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center flex flex-col items-center">
+          <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ repeat: Infinity, duration: 2 }}>
+            <AlertCircle className="w-12 h-12 text-blue-500 mb-4" />
+          </motion.div>
+          <p className="text-lg font-medium text-white tracking-tight">No live data found</p>
+          <p className="text-sm text-gray-500 mt-1">Select an active event above or wait for data.</p>
+        </motion.div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {data.labs.map((lab, i) => {
             const statusColor = STATUS_COLORS[lab.status as keyof typeof STATUS_COLORS] ?? STATUS_COLORS.delayed;
             const barColor = BAR_COLORS[lab.status as keyof typeof BAR_COLORS] ?? BAR_COLORS.delayed;
             return (
-              <motion.div key={lab.labId} initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
-                <Card className="h-full">
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{lab.labName}</h3>
-                        {lab.building && <p className="text-xs text-gray-400">{lab.building}</p>}
+              <motion.div key={lab.labId} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
+                <Card className="h-full bg-[#111] border-white/5 hover:shadow-[0_0_15px_rgba(37,99,235,0.1)] transition-all">
+                  <CardContent className="p-6 space-y-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 pr-4">
+                        <h3 className="font-bold text-white text-lg tracking-tight truncate">{lab.labName}</h3>
+                        {lab.building && <p className="text-sm text-gray-400 truncate">{lab.building}</p>}
                       </div>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColor}`}>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider whitespace-nowrap ${statusColor}`}>
                         {lab.status.replace('_', ' ')}
                       </span>
                     </div>
 
                     {/* Progress */}
-                    <div>
-                      <div className="flex justify-between text-xs text-gray-500 mb-1">
-                        <span>{lab.reviewed}/{lab.totalTeams} reviewed</span>
-                        <span>{lab.progressPct}%</span>
+                    <div className="pt-2 border-t border-white/5">
+                      <div className="flex justify-between text-xs text-gray-400 mb-2">
+                        <span><span className="text-white font-medium">{lab.reviewed}</span> / {lab.totalTeams} reviewed</span>
+                        <span className="font-semibold text-white">{lab.progressPct}%</span>
                       </div>
-                      <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
                         <motion.div
                           className={`h-full rounded-full ${barColor}`}
                           initial={{ width: 0 }}
@@ -185,13 +194,13 @@ export default function LiveMonitorPage() {
                       </div>
                     </div>
 
-                    <div className="flex gap-4 text-xs text-gray-400">
-                      <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-green-500" />{lab.checkedIn} present</span>
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-orange-400" />{lab.pending} pending</span>
+                    <div className="flex gap-4 text-xs">
+                      <span className="flex items-center gap-1.5 text-gray-400"><CheckCircle className="w-3.5 h-3.5 text-green-500" /><span className="text-white font-medium">{lab.checkedIn}</span> present</span>
+                      <span className="flex items-center gap-1.5 text-gray-400"><Clock className="w-3.5 h-3.5 text-orange-500" /><span className="text-white font-medium">{lab.pending}</span> pending</span>
                     </div>
 
                     {lab.mentors.length > 0 && (
-                      <p className="text-xs text-gray-400">Mentors: {lab.mentors.join(', ')}</p>
+                      <p className="text-xs text-gray-500 mt-2 truncate"><span className="text-gray-400">Mentors:</span> {lab.mentors.join(', ')}</p>
                     )}
                   </CardContent>
                 </Card>

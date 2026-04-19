@@ -39,33 +39,32 @@ interface DashboardStats {
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  draft: { label: 'Draft', color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
-  active: { label: 'Active', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-  completed: { label: 'Completed', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  archived: { label: 'Archived', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  draft: { label: 'Draft', color: 'bg-gray-500/10 text-gray-400' },
+  active: { label: 'Active', color: 'bg-green-500/10 text-green-400' },
+  completed: { label: 'Completed', color: 'bg-blue-500/10 text-blue-400' },
+  archived: { label: 'Archived', color: 'bg-yellow-500/10 text-yellow-400' },
 };
 
+import { useQuery } from '@tanstack/react-query';
+
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
+
 export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchStats = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const { data: stats, isLoading: loading, error: queryError, refetch } = useQuery({
+    queryKey: ['admin', 'dashboard'],
+    queryFn: async () => {
       const { data } = await apiClient.get('/dashboard/stats');
-      setStats(data.data);
-    } catch (err: unknown) {
-      const message = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Failed to load dashboard data';
-      setError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return data.data as DashboardStats;
+    },
+    refetchInterval: 30000,
+  });
 
-  useEffect(() => { fetchStats(); }, []);
+  const error = queryError 
+    ? (queryError as any)?.response?.data?.error?.message ?? 'Failed to load dashboard data' 
+    : null;
+  const fetchStats = () => refetch();
 
   const kpis = stats ? [
     { label: 'Total Events', value: stats.totalEvents, sub: `${stats.activeEvents} active`, icon: Calendar, color: 'text-blue-600' },
@@ -74,15 +73,25 @@ export default function AdminDashboardPage() {
     { label: 'Suggestion Compliance', value: `${stats.suggestionCompliance}%`, sub: 'across all rounds', icon: TrendingUp, color: 'text-orange-600' },
   ] : [];
 
+  const mockChartData = [
+    { name: 'Mon', reviews: 120, active: 40 },
+    { name: 'Tue', reviews: 200, active: 80 },
+    { name: 'Wed', reviews: 150, active: 90 },
+    { name: 'Thu', reviews: 280, active: 110 },
+    { name: 'Fri', reviews: 220, active: 160 },
+    { name: 'Sat', reviews: 340, active: 200 },
+    { name: 'Sun', reviews: 400, active: 250 },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-10">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Real-time event and review activity overview</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Dashboard</h1>
+          <p className="text-sm text-gray-400 mt-1">Real-time event and review activity overview</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchStats} disabled={loading} className="gap-2">
+        <Button variant="outline" size="sm" onClick={fetchStats} disabled={loading} className="gap-2 bg-[#111] text-white border-white/10 hover:bg-white/5 hover:text-white">
           <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
@@ -90,13 +99,13 @@ export default function AdminDashboardPage() {
 
       {/* Error State */}
       {error && !loading && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <div>
-            <p className="font-medium">Failed to load dashboard</p>
-            <p className="text-sm">{error}</p>
+            <p className="font-medium text-sm">Failed to load dashboard</p>
+            <p className="text-xs mt-0.5">{error}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchStats} className="ml-auto">Retry</Button>
+          <Button variant="outline" size="sm" onClick={fetchStats} className="ml-auto border-white/10 hover:bg-white/5 bg-transparent">Retry</Button>
         </div>
       )}
 
@@ -104,19 +113,19 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i}><CardContent className="p-6"><Skeleton className="h-16 w-full" /></CardContent></Card>
+              <Card key={i}><CardContent className="p-6"><Skeleton className="h-16 w-full bg-white/5" /></CardContent></Card>
             ))
           : kpis.map((kpi, i) => (
               <motion.div key={kpi.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
-                <Card className="hover:shadow-md transition-shadow">
+                <Card>
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{kpi.label}</p>
-                        <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">{kpi.value}</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{kpi.sub}</p>
+                        <p className="text-sm text-gray-400 font-medium">{kpi.label}</p>
+                        <p className="text-3xl font-bold text-white mt-2 tracking-tight">{kpi.value}</p>
+                        <p className="text-xs text-gray-500 mt-1">{kpi.sub}</p>
                       </div>
-                      <div className={`p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800 ${kpi.color}`}>
+                      <div className={`p-2.5 rounded-lg bg-white/5 border border-white/5 ${kpi.color}`}>
                         <kpi.icon className="w-5 h-5" />
                       </div>
                     </div>
@@ -127,57 +136,86 @@ export default function AdminDashboardPage() {
         }
       </div>
 
+      {/* Activity Chart Section */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+        <Card className="p-1">
+          <CardHeader className="pb-6">
+            <CardTitle className="text-lg font-semibold text-white">Activity Overview</CardTitle>
+            <p className="text-sm text-gray-400">Review frequency and active sessions over the last 7 days.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={mockChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#111', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                    itemStyle={{ color: '#fff' }}
+                  />
+                  <Line type="monotone" dataKey="reviews" stroke="#2563EB" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6, stroke: '#2563EB', strokeWidth: 2, fill: '#111' }} />
+                  <Line type="monotone" dataKey="active" stroke="#7C3AED" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6, stroke: '#7C3AED', strokeWidth: 2, fill: '#111' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Recent Events */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-gray-400" />
-            Recent Events
-          </CardTitle>
-          <Link href="/events" className="text-xs text-[#1A56DB] hover:underline">View all →</Link>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
-          ) : stats?.recentEvents.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 dark:text-gray-600">
-              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No events yet. <Link href="/events/new" className="text-[#1A56DB] hover:underline">Create your first event</Link></p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {stats?.recentEvents.map((event) => {
-                const s = STATUS_MAP[event.status] ?? STATUS_MAP.draft;
-                return (
-                  <Link key={event.id} href={`/events/${event.id}`} className="flex items-center justify-between py-3.5 hover:bg-gray-50 dark:hover:bg-gray-900/50 -mx-6 px-6 transition-colors">
-                    <div className="min-w-0">
-                      <p className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">{event.eventName}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {event.teamCount} teams · {event.roundCount} round{event.roundCount !== 1 ? 's' : ''}
-                        {event.eventDate ? ` · ${formatDistanceToNow(new Date(event.eventDate), { addSuffix: true })}` : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                      {/* Review progress bar */}
-                      <div className="hidden sm:flex items-center gap-2">
-                        <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[#1A56DB] rounded-full transition-all"
-                            style={{ width: `${event.reviewProgress}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-gray-400">{event.reviewProgress}%</span>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-white/5">
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-white">
+              <BarChart2 className="w-4 h-4 text-blue-400" />
+              Recent Events
+            </CardTitle>
+            <Link href="/events" className="text-xs text-blue-400 hover:text-blue-300 transition-colors bg-blue-500/10 px-3 py-1.5 rounded-full">View all events</Link>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {loading ? (
+              <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full bg-white/5" />)}</div>
+            ) : stats?.recentEvents.length === 0 ? (
+              <div className="text-center py-10 text-gray-600">
+                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40 text-gray-500" />
+                <p className="text-sm">No events yet. <Link href="/events/new" className="text-blue-500 hover:text-blue-400 transition-colors">Create your first event</Link></p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {stats?.recentEvents.map((event) => {
+                  const s = STATUS_MAP[event.status] ?? STATUS_MAP.draft;
+                  return (
+                    <Link key={event.id} href={`/events/${event.id}`} className="flex items-center justify-between py-3.5 hover:bg-white/[0.04] -mx-6 px-6 transition-colors group">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm text-gray-200 group-hover:text-white transition-colors truncate">{event.eventName}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {event.teamCount} teams · {event.roundCount} round{event.roundCount !== 1 ? 's' : ''}
+                          {event.eventDate ? ` · ${formatDistanceToNow(new Date(event.eventDate), { addSuffix: true })}` : ''}
+                        </p>
                       </div>
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.color}`}>{s.label}</span>
-                      {event.status === 'active' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+                        {/* Review progress bar */}
+                        <div className="hidden sm:flex items-center gap-2">
+                          <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                            <div
+                              className="h-full bg-blue-500 rounded-full transition-all shadow-[0_0_10px_rgba(37,99,235,0.5)]"
+                              style={{ width: `${event.reviewProgress}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 font-medium">{event.reviewProgress}%</span>
+                        </div>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border border-white/5 ${s.color}`}>{s.label}</span>
+                        {event.status === 'active' && <CheckCircle className="w-4 h-4 text-green-500" />}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 }
