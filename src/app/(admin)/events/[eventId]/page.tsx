@@ -1,463 +1,487 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Calendar, Users, FlaskConical, RefreshCcw, AlertCircle,
-  ChevronLeft, CheckCircle, Lock, Circle, Play, Archive,
-  CheckCircle2, Trophy, Loader2, AlertTriangle, XCircle,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowLeft, ArrowRight, Calendar, MapPin, Settings, Check, Loader2, Plus, Trash2, Wand2, Calculator, AlertTriangle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAppStore } from '@/stores/useAppStore';
-import apiClient from '@/lib/apiClient';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import Link from 'next/link';
-import { format } from 'date-fns';
+import apiClient from '@/lib/apiClient';
 
-// ─── Types ──────────────────────────────────────────────────
-interface RoundStat {
-  id: string; roundName: string; roundOrder: number; status: string;
-  opensAt: string | null; lockedAt: string | null;
-  labCount: number; mentorCount: number; submittedReviews: number;
-  teamCount: number; progress: number;
-}
-interface LabStat {
-  id: string; labName: string; building: string | null; floor: string | null;
-  capacity: number; status: string; teamCount: number; mentorCount: number;
-}
-interface EventDetail {
-  id: string; eventName: string; organizerName: string; description: string | null;
-  eventDate: string; venue: string; eventType: string; status: string;
-  totalRounds: number; suggestionsEnabled: boolean; teamCount: number;
-  createdBy: { fullName: string; email: string };
-  rounds: RoundStat[]; labs: LabStat[];
-}
+const STEPS = [
+  { label: 'Basic Info', icon: Calendar },
+  { label: 'Rounds', icon: Settings },
+  { label: 'Rubric', icon: FileText },
+  { label: 'Settings', icon: Settings },
+  { label: 'Review', icon: Check },
+];
 
-// ─── Status helpers ──────────────────────────────────────────
-const STATUS_BADGE: Record<string, string> = {
-  pending:   'bg-gray-100 text-gray-600',
-  open:      'bg-green-100 text-green-700',
-  locked:    'bg-red-100 text-red-700',
-  draft:     'bg-gray-100 text-gray-600',
-  active:    'bg-green-100 text-green-700',
-  completed: 'bg-blue-100 text-blue-700',
-  archived:  'bg-yellow-100 text-yellow-700',
-};
+const eventSchema = z.object({
+  eventName: z.string().min(2, 'Event name is required'),
+  organizerName: z.string().min(2, 'Organizer name is required'),
+  description: z.string().optional(),
+  eventDate: z.string().min(1, 'Event date is required'),
+  venue: z.string().min(2, 'Venue is required'),
+  eventType: z.enum(['single_round', 'multi_round']),
+});
 
-// ─── Lifecycle config ────────────────────────────────────────
-const LIFECYCLE_ACTIONS: Record<string, {
-  next: string; label: string; icon: React.ElementType;
-  color: string; description: string;
-  warning?: string;
-}> = {
-  draft: {
-    next: 'active', label: 'Activate Event', icon: Play,
-    color: 'bg-green-600 hover:bg-green-700 text-white',
-    description: 'Activate this event to allow check-ins, lab assignments, and judge submissions. Requires at least one round and one team.',
-  },
-  active: {
-    next: 'completed', label: 'Mark as Completed', icon: CheckCircle2,
-    color: 'bg-blue-600 hover:bg-blue-700 text-white',
-    description: 'Mark this event as completed. All rounds should be locked and reviews finalised.',
-    warning: 'Open rounds or draft reviews will block completion unless you override.',
-  },
-};
-const ARCHIVE_ACTION = {
-  next: 'archived', label: 'Archive Event', icon: Archive,
-  color: 'bg-yellow-600 hover:bg-yellow-700 text-white',
-  description: 'Archive this event. It will become read-only. Results must be published separately.',
-};
+type EventFormData = z.infer<typeof eventSchema>;
 
-// ─── Confirmation Dialog ─────────────────────────────────────
-function ConfirmDialog({
-  title, description, warning, confirmLabel, confirmClass,
-  loading, onConfirm, onCancel, showForce, force, onForceChange,
-}: {
-  title: string; description: string; warning?: string; confirmLabel: string;
-  confirmClass: string; loading: boolean;
-  onConfirm: () => void; onCancel: () => void;
-  showForce?: boolean; force?: boolean; onForceChange?: (v: boolean) => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-700"
-      >
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">{title}</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{description}</p>
-        {warning && (
-          <div className="flex items-start gap-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 mb-4">
-            <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-yellow-800 dark:text-yellow-400">{warning}</p>
-          </div>
-        )}
-        {showForce && (
-          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-4 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={force}
-              onChange={(e) => onForceChange?.(e.target.checked)}
-              className="rounded"
-            />
-            Override validation — proceed even if rounds or reviews are incomplete
-          </label>
-        )}
-        <div className="flex items-center gap-3 justify-end">
-          <Button variant="outline" onClick={onCancel} disabled={loading}>Cancel</Button>
-          <Button onClick={onConfirm} disabled={loading} className={confirmClass}>
-            {loading && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-            {confirmLabel}
-          </Button>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-// ─── Page ────────────────────────────────────────────────────
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-
-export default function EventDetailPage() {
-  const params = useParams();
+export default function CreateEventPage() {
   const router = useRouter();
-  const { user } = useAppStore();
-  const eventId = params.eventId as string;
-  const queryClient = useQueryClient();
+  const [step, setStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
+  const [allowMultiMentor, setAllowMultiMentor] = useState(false);
+  const [rounds, setRounds] = useState([
+    { roundName: 'Round 1 â€” Preliminary', roundOrder: 1 },
+  ]);
+  const [rubricTheme, setRubricTheme] = useState('');
+  const [rubricData, setRubricData] = useState<{key: string, label: string, guidance: string, weight: number}[]>([
+    { key: 'technical', label: 'Technical Implementation', guidance: 'Quality of code and arch', weight: 40 },
+    { key: 'innovation', label: 'Innovation', guidance: 'How novel is it?', weight: 30 },
+    { key: 'design', label: 'Design & UX', guidance: 'User interface quality', weight: 30 }
+  ]);
+  const [isGeneratingRubric, setIsGeneratingRubric] = useState(false);
+  const [rubricConfirmed, setRubricConfirmed] = useState(true);
+  const [rubricEdited, setRubricEdited] = useState(false);
 
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const totalWeight = rubricData.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+  const isRubricValid = totalWeight === 100;
 
-  // Lifecycle dialog state
-  const [dialog, setDialog] = useState<{ type: 'activate' | 'complete' | 'archive' } | null>(null);
-  const [forceComplete, setForceComplete] = useState(false);
-  const [dialogLoading, setDialogLoading] = useState(false);
-  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const normalizeWeights = () => {
+    if (totalWeight === 0) return;
+    const factor = 100 / totalWeight;
+    let newTotal = 0;
+    const normalized = rubricData.map((r, i) => {
+      let w = Math.round((r.weight || 0) * factor);
+      if (i === rubricData.length - 1) {
+         w = 100 - newTotal; // adjust last one to exactly reach 100
+      } else {
+         newTotal += w;
+      }
+      return { ...r, weight: w >= 0 ? w : 0 };
+    });
+    setRubricData(normalized);
+    setRubricConfirmed(false);
+  };
 
-  const { data: event, isLoading: loading, refetch: fetchEvent } = useQuery({
-    queryKey: ['events', eventId],
-    queryFn: async () => {
-      const { data } = await apiClient.get(`/events/${eventId}`);
-      return data.data as EventDetail;
-    },
-    refetchInterval: 30000,
+  const { register, handleSubmit, watch, formState: { errors }, getValues, trigger } = useForm<EventFormData>({
+    resolver: zodResolver(eventSchema),
+    defaultValues: { eventType: 'multi_round' },
   });
 
-  // ─── Round actions ────────────────────────────────────────
-  const handleRoundAction = async (roundId: string, action: 'open' | 'locked') => {
-    setActionLoading(roundId + action);
-    try {
-      await apiClient.patch(`/rounds/${roundId}`, { status: action });
-      toast.success(`Round ${action === 'open' ? 'opened' : 'locked'} successfully`);
-      queryClient.invalidateQueries({ queryKey: ['events'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
-      fetchEvent();
-    } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Action failed');
-    } finally { setActionLoading(null); }
+  const eventType = watch('eventType');
+
+  const addRound = () => {
+    if (rounds.length >= 5) return;
+    const order = rounds.length + 1;
+    const names = ['', 'Preliminary', 'Semifinals', 'Finals', 'Grand Finale', 'Bonus'];
+    setRounds([...rounds, { roundName: `Round ${order} â€” ${names[order] || 'Round ' + order}`, roundOrder: order }]);
   };
 
-  const handleAdvanceRound = async (roundId: string) => {
-    if (!window.confirm('Advance eligible teams (verdict: selected or shortlisted) to the next round?')) return;
-    setActionLoading(roundId + 'advance');
-    try {
-      const { data } = await apiClient.post(`/rounds/${roundId}/advance`, {});
-      toast.success(data.data.message);
-      queryClient.invalidateQueries({ queryKey: ['events'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
-      fetchEvent();
-    } catch (err: unknown) {
-      toast.error((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Advance failed');
-    } finally { setActionLoading(null); }
+  const removeRound = (idx: number) => {
+    if (rounds.length <= 1) return;
+    setRounds(rounds.filter((_, i) => i !== idx).map((r, i) => ({ ...r, roundOrder: i + 1 })));
   };
 
-  // ─── Lifecycle action ─────────────────────────────────────
-  const confirmStatus = async (newStatus: string, force = false) => {
-    setDialogLoading(true);
-    setLifecycleError(null);
-    try {
-      await apiClient.patch(`/events/${eventId}/status`, { status: newStatus, force });
-      toast.success(`Event ${newStatus} successfully`);
-      setDialog(null);
-      queryClient.invalidateQueries({ queryKey: ['events'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['coordinator', 'dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['live-monitor'] });
-      fetchEvent();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Status change failed';
-      setLifecycleError(msg);
-    } finally { setDialogLoading(false); }
+  const nextStep = async () => {
+    if (step === 0) {
+      const valid = await trigger(['eventName', 'organizerName', 'eventDate', 'venue', 'eventType']);
+      if (!valid) return;
+    }
+    if (step === 2 && (!isRubricValid || !rubricConfirmed)) {
+      toast.error('Please confirm a valid rubric (weights must sum to 100) before proceeding.');
+      return;
+    }
+    setStep(Math.min(step + 1, STEPS.length - 1));
   };
 
-  if (loading) return (
-    <div className="space-y-6">
-      <Skeleton className="h-10 w-64" />
-      <Skeleton className="h-32 w-full" />
-      <Skeleton className="h-64 w-full" />
-    </div>
-  );
+  const generateRubric = async () => {
+    if (rubricEdited && rubricData.length > 0) {
+       if (!confirm("You have edited the rubric manually. Do you want to overwrite it with a newly generated one?")) return;
+    }
+    setIsGeneratingRubric(true);
+    setRubricConfirmed(false);
+    try {
+      const res = await fetch('/api/v1/ai/rubric', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: rubricTheme || formValues.eventName })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.message);
+      setRubricData(data.result);
+      setRubricEdited(false);
+      toast.success('AI Rubric generated');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to generate rubric');
+    } finally {
+      setIsGeneratingRubric(false);
+    }
+  };
 
-  if (!event) return (
-    <div className="flex flex-col items-center py-20 text-center">
-      <AlertCircle className="w-10 h-10 text-red-400 mb-3" />
-      <h2 className="font-semibold text-gray-900 dark:text-gray-100">Event not found</h2>
-      <Button variant="outline" className="mt-4" onClick={() => router.push('/events')}>Back to Events</Button>
-    </div>
-  );
+  const prevStep = () => setStep(Math.max(step - 1, 0));
 
-  const isArchived = event.status === 'archived';
-  const primaryAction = LIFECYCLE_ACTIONS[event.status];
-  const canArchive = ['active', 'completed'].includes(event.status);
+  const onSubmit = async (data: EventFormData) => {
+    setIsSubmitting(true);
+    try {
+      await apiClient.post('/events', {
+        ...data,
+        totalRounds: rounds.length,
+        suggestionsEnabled,
+        allowMultiMentorReview: allowMultiMentor,
+        rounds,
+        scoringModel: rubricData, 
+      });
+      toast.success('Event created successfully');
+      router.push('/events');
+    } catch {
+      toast.error('Failed to create event');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const formValues = getValues();
 
   return (
-    <div className="space-y-6">
-      <AnimatePresence>
-        {dialog && (
-          <ConfirmDialog
-            title={
-              dialog.type === 'activate' ? 'Activate Event' :
-              dialog.type === 'complete' ? 'Mark Event as Completed' : 'Archive Event'
-            }
-            description={
-              dialog.type === 'activate' ? LIFECYCLE_ACTIONS.draft.description :
-              dialog.type === 'complete' ? LIFECYCLE_ACTIONS.active.description :
-              ARCHIVE_ACTION.description
-            }
-            warning={dialog.type === 'complete' ? LIFECYCLE_ACTIONS.active.warning : undefined}
-            showForce={dialog.type === 'complete'}
-            force={forceComplete}
-            onForceChange={setForceComplete}
-            confirmLabel={
-              dialog.type === 'activate' ? 'Activate' :
-              dialog.type === 'complete' ? 'Mark Completed' : 'Archive'
-            }
-            confirmClass={
-              dialog.type === 'activate' ? 'bg-green-600 hover:bg-green-700' :
-              dialog.type === 'complete' ? 'bg-blue-600 hover:bg-blue-700' :
-              'bg-yellow-600 hover:bg-yellow-700'
-            }
-            loading={dialogLoading}
-            onCancel={() => { setDialog(null); setLifecycleError(null); setForceComplete(false); }}
-            onConfirm={() => confirmStatus(
-              dialog.type === 'activate' ? 'active' :
-              dialog.type === 'complete' ? 'completed' : 'archived',
-              dialog.type === 'complete' ? forceComplete : false
-            )}
-          />
-        )}
-      </AnimatePresence>
-
+    <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => router.push('/events')}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
         <div>
-          <button onClick={() => router.push('/events')} className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-2 transition-colors">
-            <ChevronLeft className="w-4 h-4" />Events
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{event.eventName}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{event.organizerName} · {event.venue}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${STATUS_BADGE[event.status] ?? STATUS_BADGE.draft}`}>{event.status}</span>
-          <Button variant="outline" size="sm" onClick={() => fetchEvent()} disabled={loading}><RefreshCcw className="w-4 h-4" /></Button>
-          {/* Results link for completed/active */}
-          {(event.status === 'completed' || event.status === 'active') && (
-            <Button variant="outline" size="sm" onClick={() => router.push(`/results/${event.id}`)} className="gap-1.5">
-              <Trophy className="w-4 h-4" />Results
-            </Button>
-          )}
-          {/* Quick links */}
-          <Button variant="outline" size="sm" onClick={() => router.push(`/labs?eventId=${event.id}`)} className="gap-1.5 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900">
-            <FlaskConical className="w-4 h-4" />Labs
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => router.push(`/assignments?eventId=${event.id}`)} className="gap-1.5 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-900">
-            <Users className="w-4 h-4" />Assignments
-          </Button>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Create Event</h1>
+          <p className="text-sm text-gray-500">Step {step + 1} of {STEPS.length}</p>
         </div>
       </div>
 
-      {/* Lifecycle error banner */}
-      {lifecycleError && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="flex items-start gap-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-700 rounded-xl p-4"
-        >
-          <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-red-700 dark:text-red-400">Action Failed</p>
-            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{lifecycleError}</p>
-          </div>
-          <button onClick={() => setLifecycleError(null)} className="ml-auto text-red-400 hover:text-red-600">
-            <XCircle className="w-4 h-4" />
-          </button>
-        </motion.div>
-      )}
-
-      {/* Lifecycle Actions Card */}
-      {!isArchived && (
-        <Card className="border-2 border-dashed border-gray-200 dark:border-gray-700">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Event Lifecycle</p>
-                <p className="text-xs text-gray-500 mt-0.5">Current status: <span className="font-semibold capitalize">{event.status}</span></p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {primaryAction && (
-                  <Button
-                    className={`gap-1.5 ${primaryAction.color}`}
-                    size="sm"
-                    onClick={() => setDialog({ type: event.status === 'draft' ? 'activate' : 'complete' })}
-                  >
-                    <primaryAction.icon className="w-4 h-4" />
-                    {primaryAction.label}
-                  </Button>
-                )}
-                {canArchive && (
-                  <Button
-                    className={`gap-1.5 ${ARCHIVE_ACTION.color}`}
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialog({ type: 'archive' })}
-                  >
-                    <Archive className="w-4 h-4" />
-                    Archive
-                  </Button>
-                )}
-              </div>
+      {/* Step Indicator */}
+      <div className="flex items-center gap-1">
+        {STEPS.map((s, i) => (
+          <div key={s.label} className="flex items-center flex-1">
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              i === step ? 'bg-blue-50 dark:bg-blue-950/40 text-[#1A56DB]' :
+              i < step ? 'text-green-600' : 'text-gray-400'
+            }`}>
+              {i < step ? <Check className="w-4 h-4" /> : <s.icon className="w-4 h-4" />}
+              <span className="hidden sm:inline">{s.label}</span>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Archived banner */}
-      {isArchived && (
-        <div className="flex items-center gap-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-700 rounded-xl p-4">
-          <Archive className="w-5 h-5 text-yellow-600" />
-          <p className="text-sm text-yellow-800 dark:text-yellow-400">This event is archived and is read-only.</p>
-        </div>
-      )}
-
-      {/* KPI summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Teams', value: event.teamCount, icon: Users },
-          { label: 'Rounds', value: event.totalRounds, icon: Circle },
-          { label: 'Labs', value: event.labs.length, icon: FlaskConical },
-          { label: 'Event Date', value: format(new Date(event.eventDate), 'MMM d, yyyy'), icon: Calendar },
-        ].map(({ label, value, icon: Icon }) => (
-          <Card key={label}><CardContent className="p-4 flex items-center gap-3">
-            <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <div><p className="text-xs text-gray-400">{label}</p><p className="font-semibold text-gray-900 dark:text-gray-100">{value}</p></div>
-          </CardContent></Card>
+            {i < STEPS.length - 1 && <div className={`flex-1 h-px mx-2 ${i < step ? 'bg-green-300' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+          </div>
         ))}
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="rounds" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="rounds">Rounds</TabsTrigger>
-          <TabsTrigger value="labs">Labs</TabsTrigger>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-        </TabsList>
-
-        {/* Rounds */}
-        <TabsContent value="rounds" className="space-y-3">
-          {event.rounds.length === 0 ? (
-            <Card><CardContent className="py-12 text-center text-gray-400">No rounds configured for this event.</CardContent></Card>
-          ) : event.rounds.map((round) => (
-            <Card key={round.id}>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">{round.roundName}</h3>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_BADGE[round.status] ?? STATUS_BADGE.pending}`}>{round.status}</span>
+      {/* Step Content */}
+      <Card>
+        <CardContent className="p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Step 1: Basic Info */}
+              {step === 0 && (
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <Label htmlFor="eventName">Event Name *</Label>
+                    <Input id="eventName" placeholder="Tech Expo 2026" className="h-11" {...register('eventName')} />
+                    {errors.eventName && <p className="text-xs text-red-500">{errors.eventName.message}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="organizerName">Organizer *</Label>
+                    <Input id="organizerName" placeholder="Computer Science Department" className="h-11" {...register('organizerName')} />
+                    {errors.organizerName && <p className="text-xs text-red-500">{errors.organizerName.message}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea id="description" placeholder="Brief description of the event..." rows={3} {...register('description')} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="eventDate">Event Date *</Label>
+                      <Input id="eventDate" type="date" className="h-11" {...register('eventDate')} />
+                      {errors.eventDate && <p className="text-xs text-red-500">{errors.eventDate.message}</p>}
                     </div>
-                    <div className="text-xs text-gray-400 space-x-3">
-                      <span>{round.submittedReviews}/{round.teamCount} reviews</span>
-                      <span>{round.labCount} labs</span>
-                      <span>{round.mentorCount} mentors</span>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-[#1A56DB] rounded-full transition-all" style={{ width: `${round.progress}%` }} />
-                      </div>
-                      <span className="text-xs text-gray-400">{round.progress}%</span>
+                    <div className="space-y-2">
+                      <Label htmlFor="venue">Venue *</Label>
+                      <Input id="venue" placeholder="Main Campus, Block A" className="h-11" {...register('venue')} />
+                      {errors.venue && <p className="text-xs text-red-500">{errors.venue.message}</p>}
                     </div>
                   </div>
-                  {!isArchived && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {round.status === 'pending' && (
-                        <Button size="sm" variant="outline" onClick={() => handleRoundAction(round.id, 'open')} disabled={!!actionLoading} className="gap-1.5">
-                          <CheckCircle className="w-3.5 h-3.5 text-green-500" />Open
-                        </Button>
-                      )}
-                      {round.status === 'open' && (
-                        <Button size="sm" variant="outline" onClick={() => handleRoundAction(round.id, 'locked')} disabled={!!actionLoading} className="gap-1.5">
-                          <Lock className="w-3.5 h-3.5 text-red-500" />Lock
-                        </Button>
-                      )}
-                      {round.status === 'locked' && (
-                        <Button size="sm" className="bg-[#1A56DB] hover:bg-[#1044A5] gap-1.5" onClick={() => handleAdvanceRound(round.id)} disabled={!!actionLoading}>
-                          Advance →
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label>Event Type *</Label>
+                    <Select value={eventType} onValueChange={(v) => {
+                      // Manually set the form value
+                      const el = document.getElementById('eventType') as HTMLInputElement;
+                      if (el) el.value = v || '';
+                    }}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single_round">Single Round</SelectItem>
+                        <SelectItem value="multi_round">Multi Round</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <input type="hidden" id="eventType" {...register('eventType')} />
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
+              )}
 
-        {/* Labs */}
-        <TabsContent value="labs" className="space-y-3">
-          <div className="flex justify-end">
-            <Link href={`/labs?eventId=${event.id}`}>
-              <Button size="sm" variant="outline">Manage Labs →</Button>
-            </Link>
-          </div>
-          {event.labs.length === 0 ? (
-            <Card><CardContent className="py-12 text-center text-gray-400">No labs configured. <Link href={`/labs?eventId=${event.id}`} className="text-[#1A56DB] hover:underline">Add labs →</Link></CardContent></Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {event.labs.map((lab) => (
-                <Card key={lab.id}>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{lab.labName}</h3>
-                    {lab.building && <p className="text-xs text-gray-400">{lab.building}{lab.floor ? `, Floor ${lab.floor}` : ''}</p>}
-                    <div className="flex gap-4 text-xs text-gray-400 mt-2">
-                      <span>{lab.teamCount} teams</span>
-                      <span>{lab.mentorCount} mentors</span>
-                      <span>Cap. {lab.capacity}</span>
+              {/* Step 2: Rounds */}
+              {step === 1 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">Configure Rounds</h3>
+                    <Button variant="outline" size="sm" onClick={addRound} disabled={rounds.length >= 5}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Round
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {rounds.map((round, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                        <Badge variant="secondary" className="px-2.5 py-1">{round.roundOrder}</Badge>
+                        <Input
+                          value={round.roundName}
+                          onChange={(e) => {
+                            const updated = [...rounds];
+                            updated[i].roundName = e.target.value;
+                            setRounds(updated);
+                          }}
+                          className="flex-1 h-9"
+                        />
+                        {rounds.length > 1 && (
+                          <Button variant="ghost" size="icon" onClick={() => removeRound(i)} className="text-gray-400 hover:text-red-500">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Rubric Builder */}
+              {step === 2 && (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row gap-4 sm:items-end p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                    <div className="flex-1 space-y-1">
+                      <Label className="text-blue-400 font-semibold flex items-center gap-2">
+                        <Wand2 className="w-4 h-4" /> AI Rubric Builder
+                      </Label>
+                      <p className="text-xs text-gray-400">Describe the event focus or theme, and AI will generate custom scoring criteria.</p>
+                      <Input 
+                        placeholder="e.g., Blockchain for Sustainability Hackathon" 
+                        value={rubricTheme} 
+                        onChange={(e) => setRubricTheme(e.target.value)} 
+                        className="h-9 bg-[#111] border-white/10 mt-2"
+                        disabled={isGeneratingRubric}
+                      />
                     </div>
-                    <span className={`mt-2 inline-block text-xs px-2 py-0.5 rounded-full ${lab.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>{lab.status}</span>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+                    <Button onClick={generateRubric} disabled={isGeneratingRubric || !rubricTheme} className="bg-blue-600 hover:bg-blue-500 text-white gap-2 whitespace-nowrap">
+                      {isGeneratingRubric ? <Loader2 className="w-4 h-4 animate-spin"/> : <Wand2 className="w-4 h-4"/>}
+                      Generate Rubric
+                    </Button>
+                  </div>
 
-        {/* Overview */}
-        <TabsContent value="overview">
-          <Card><CardContent className="p-6 space-y-3 text-sm">
-            {event.description && <p className="text-gray-600 dark:text-gray-400">{event.description}</p>}
-            <div className="grid grid-cols-2 gap-4">
-              <div><p className="text-xs text-gray-400">Event Type</p><p className="font-medium text-gray-900 dark:text-gray-100 capitalize">{event.eventType.replace('_', ' ')}</p></div>
-              <div><p className="text-xs text-gray-400">Suggestions</p><p className="font-medium text-gray-900 dark:text-gray-100">{event.suggestionsEnabled ? 'Enabled' : 'Disabled'}</p></div>
-              <div><p className="text-xs text-gray-400">Created By</p><p className="font-medium text-gray-900 dark:text-gray-100">{event.createdBy.fullName}</p></div>
-              <div><p className="text-xs text-gray-400">Event Date</p><p className="font-medium text-gray-900 dark:text-gray-100">{format(new Date(event.eventDate), 'MMMM d, yyyy')}</p></div>
-            </div>
-          </CardContent></Card>
-        </TabsContent>
-      </Tabs>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <Calculator className="w-4 h-4 text-gray-400"/>
+                        Scoring Criteria Weights
+                      </h3>
+                      {!rubricConfirmed && (
+                         <div className="flex items-center gap-3">
+                           {!isRubricValid && totalWeight > 0 && (
+                             <Button variant="outline" size="sm" onClick={normalizeWeights} className="h-7 text-[10px] gap-1 text-yellow-500 border-yellow-500/20 hover:bg-yellow-500/10">
+                               Normalize Weights
+                             </Button>
+                           )}
+                           <div className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1 ${isRubricValid ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse'}`}>
+                             {isRubricValid ? <Check className="w-3 h-3"/> : <AlertTriangle className="w-3 h-3"/>}
+                             Total: {totalWeight}% {isRubricValid ? '(Valid)' : '(Requires 100%)'}
+                           </div>
+                         </div>
+                      )}
+                    </div>
+                    
+                    <div className="bg-[#111] border border-white/10 rounded-xl overflow-hidden shadow-inner">
+                      <div className="grid grid-cols-[1fr_2fr_100px_40px] gap-2 p-3 bg-black/40 text-xs font-semibold text-gray-400 border-b border-white/5 uppercase">
+                        <div>Label</div>
+                        <div>Guidance</div>
+                        <div className="text-center">Weight (%)</div>
+                        <div></div>
+                      </div>
+                      
+                      <div className="flex flex-col">
+                        {rubricData.map((row, idx) => (
+                          <div key={idx} className="grid grid-cols-[1fr_2fr_100px_40px] gap-2 p-2 border-b border-white/5 items-center hover:bg-white/[0.02]">
+                            <Input 
+                              value={row.label}
+                              onChange={(e) => {
+                                const nw = [...rubricData]; nw[idx].label = e.target.value; setRubricData(nw); setRubricConfirmed(false); setRubricEdited(true);
+                              }}
+                              className="h-8 text-xs bg-transparent border-transparent hover:border-white/20 focus:border-blue-500 focus:bg-[#111] px-2 shadow-none rounded-md"
+                            />
+                            <Input 
+                              value={row.guidance}
+                              onChange={(e) => {
+                                const nw = [...rubricData]; nw[idx].guidance = e.target.value; setRubricData(nw); setRubricConfirmed(false); setRubricEdited(true);
+                              }}
+                              className="h-8 text-[11px] text-gray-400 bg-transparent border-transparent hover:border-white/20 focus:border-blue-500 focus:bg-[#111] px-2 shadow-none rounded-md truncate focus:w-[400px] transition-all absolute-focus-trick"
+                            />
+                            <Input 
+                              type="number"
+                              value={row.weight}
+                              onChange={(e) => {
+                                const nw = [...rubricData]; nw[idx].weight = parseInt(e.target.value) || 0; setRubricData(nw); setRubricConfirmed(false); setRubricEdited(true);
+                              }}
+                              className="h-8 text-xs text-center font-mono font-bold bg-white/5 border border-white/10"
+                            />
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-500 hover:text-red-400" onClick={() => {
+                               setRubricData(rubricData.filter((_, i) => i !== idx)); setRubricConfirmed(false); setRubricEdited(true);
+                            }}>
+                              <Trash2 className="w-3.5 h-3.5"/>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="p-2 border-t border-white/5 flex gap-2">
+                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => {
+                           setRubricData([...rubricData, {key: `criteria_${Date.now()}`, label: 'New Criteria', guidance: 'Description', weight: 0}]);
+                           setRubricConfirmed(false);
+                        }}>
+                          <Plus className="w-3 h-3"/> Add Criteria
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-6">
+                      <p className="text-xs text-gray-500 max-w-[250px]">Admins must finalize and confirm the scoring weights before proceeding.</p>
+                      {rubricConfirmed ? (
+                        <div className="flex items-center gap-2 text-sm text-green-400 font-medium px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+                          <Check className="w-4 h-4"/> Rubric Finalized ({totalWeight}%)
+                        </div>
+                      ) : (
+                        <Button 
+                          onClick={() => setRubricConfirmed(true)} 
+                          disabled={!isRubricValid}
+                          className={`gap-2 ${isRubricValid ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`}
+                        >
+                          <Check className="w-4 h-4"/> Confirm Rubric
+                        </Button>
+                      )}
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Settings */}
+              {step === 3 && (
+                <div className="space-y-6">
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">Event Settings</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">Suggestion Tracking</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Track mentor suggestions across rounds</p>
+                      </div>
+                      <Switch checked={suggestionsEnabled} onCheckedChange={setSuggestionsEnabled} />
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">Multi-Mentor Review</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Allow multiple mentors to review the same team</p>
+                      </div>
+                      <Switch checked={allowMultiMentor} onCheckedChange={setAllowMultiMentor} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 5: Review */}
+              {step === 4 && (
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">Review & Create</h3>
+                  <div className="space-y-3 text-sm">
+                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 space-y-2">
+                      <p><span className="text-gray-500">Event:</span> <strong>{formValues.eventName}</strong></p>
+                      <p><span className="text-gray-500">Organizer:</span> {formValues.organizerName}</p>
+                      <p><span className="text-gray-500">Date:</span> {formValues.eventDate}</p>
+                      <p><span className="text-gray-500">Venue:</span> {formValues.venue}</p>
+                      <p><span className="text-gray-500">Type:</span> {formValues.eventType?.replace('_', ' ')}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 space-y-2">
+                      <p className="font-medium">Rounds ({rounds.length})</p>
+                      {rounds.map((r) => (
+                        <p key={r.roundOrder} className="text-gray-600 dark:text-gray-400 pl-4">
+                          {r.roundOrder}. {r.roundName}
+                        </p>
+                      ))}
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 space-y-2">
+                      <p className="font-medium">Scoring Rubric ({rubricData.length} Criteria)</p>
+                      {rubricData.map((r, i) => (
+                        <p key={i} className="text-gray-600 dark:text-gray-400 pl-4 text-xs">
+                          {r.weight}% â€” {r.label}
+                        </p>
+                      ))}
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 space-y-1">
+                      <p><span className="text-gray-500">Suggestions:</span> {suggestionsEnabled ? 'Enabled' : 'Disabled'}</p>
+                      <p><span className="text-gray-500">Multi-mentor:</span> {allowMultiMentor ? 'Enabled' : 'Disabled'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Navigation */}
+          <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <Button
+              variant="outline"
+              onClick={prevStep}
+              disabled={step === 0}
+              className="gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </Button>
+
+            {step < STEPS.length - 1 ? (
+              <Button onClick={nextStep} className="gap-2 bg-[#1A56DB] hover:bg-[#1044A5]">
+                Next
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button onClick={handleSubmit(onSubmit)} disabled={isSubmitting} className="gap-2 bg-[#1A56DB] hover:bg-[#1044A5]">
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {isSubmitting ? 'Creating...' : 'Create Event'}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

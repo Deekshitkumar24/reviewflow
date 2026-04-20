@@ -79,7 +79,7 @@ export function GlobalSearch() {
     queryFn: async () => {
       if (!activeRole) return [];
       
-      const endpoints = [];
+      const endpoints: { url: string; type: string; icon: any; path: string }[] = [];
       const results: SearchResult[] = [];
 
       // Build endpoints depending on role based on existing queries

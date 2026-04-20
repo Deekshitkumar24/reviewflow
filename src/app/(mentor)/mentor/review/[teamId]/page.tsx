@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AIReviewSection } from '@/components/ui/AIReviewSection';
+import { AIActionButton } from '@/components/ui/AIActionButton';
 import { toast } from 'sonner';
 import { useAppStore } from '@/stores/useAppStore';
 import apiClient from '@/lib/apiClient';
@@ -43,6 +45,9 @@ interface TeamInfo {
     problemSolvingScore: number;
     communicationScore: number;
     compositeScore: string;
+    strengths: string | null;
+    weaknesses: string | null;
+    overallComments: string | null;
     verdict: string;
     isDraft: boolean;
     round: { roundName: string; roundOrder: number };
@@ -122,6 +127,7 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
 
   // Suggestions for this review
   const [suggestions, setSuggestions] = useState<SuggestionDraft[]>([]);
+  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
 
   // Previous suggestion statuses
   // Suggestion Statuses
@@ -213,6 +219,10 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
                 communicationScore: draftReview.communicationScore,
               });
               setVerdict((draftReview.verdict as VerdictType) || '');
+              setStrengths(draftReview.strengths || '');
+              setWeaknesses(draftReview.weaknesses || '');
+              setOverallComments(draftReview.overallComments || '');
+              
               if (draftReview.suggestions.length > 0) {
                 setSuggestions(
                   draftReview.suggestions.map((s: TeamInfo['reviews'][0]['suggestions'][0]) => ({
@@ -249,6 +259,9 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
             communicationScore: existingFinal.communicationScore,
           });
           setVerdict((existingFinal.verdict as VerdictType) || '');
+          setStrengths(existingFinal.strengths || '');
+          setWeaknesses(existingFinal.weaknesses || '');
+          setOverallComments(existingFinal.overallComments || '');
           setIsReadOnly(true);
           toast.info('You have already submitted a final review for this team in this round.', { duration: 5000 });
         }
@@ -278,6 +291,42 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
   const removeSuggestion = (index: number) => {
     if (isReadOnly) return;
     setSuggestions(suggestions.filter((_, i) => i !== index));
+  };
+
+  const handleGenerateNextSteps = async () => {
+    const combinedNotes = `${strengths}\n${weaknesses}\n${overallComments}`;
+    if (combinedNotes.trim().length < 15) {
+      toast.error('Please write some notes in Strengths/Weaknesses first.');
+      return;
+    }
+    
+    setGeneratingSuggestions(true);
+    try {
+      const res = await fetch('/api/v1/ai/review/nextsteps', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: currentRound?.roundName || 'global', rawFeedback: combinedNotes }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.message);
+      
+      const newLines = data.result.split('\n')
+        .map((l: string) => l.replace(/^- /, '').trim())
+        .filter((l: string) => l.length > 5);
+      
+      const newSuggestions = [...suggestions];
+      for (const line of newLines) {
+        if (newSuggestions.length >= 5) break;
+        newSuggestions.push({ text: line, category: 'Technical', orderIndex: newSuggestions.length });
+      }
+      
+      setSuggestions(newSuggestions);
+      toast.success('Generated Next Steps');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate next steps');
+    } finally {
+      setGeneratingSuggestions(false);
+    }
   };
 
   const submitMutation = useMutation({
@@ -324,7 +373,10 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
       if (!verdict) { toast.error('Please select a verdict'); return; }
       const hasZeroScore = Object.values(scores).some(s => s === 0);
       if (hasZeroScore) { toast.error('All scores must be at least 1'); return; }
-      if (weaknesses.length < 10) { toast.error('Weaknesses must be at least 10 characters'); return; }
+      
+      const finalWeaknesses = weaknesses;
+      if (finalWeaknesses.length < 10) { toast.error('Weaknesses must be at least 10 characters'); return; }
+      
       if (previousSuggestions.length > 0) {
         const unmarked = suggestionStatuses.some(s => !s.status);
         if (unmarked) { toast.error('Please mark all previous suggestions before submitting'); return; }
@@ -599,43 +651,47 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
           </CardContent>
         </Card>
 
-        {/* ─── SECTION 5: TEXT FIELDS ─── */}
+        {/* ─── SECTION 5: TEXT FIELDS (WITH AI) ─── */}
         <Card className="border border-gray-200 dark:border-gray-800">
-          <CardContent className="p-5 space-y-4">
-            <div className="space-y-2">
-              <Label>Strengths</Label>
-              <Textarea
-                placeholder="What did the team do well?"
-                value={strengths}
-                onChange={(e) => setStrengths(e.target.value)}
-                rows={3}
-                disabled={isReadOnly}
-              />
-              <p className="text-xs text-gray-400 text-right">{strengths.length} chars</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Weaknesses <span className="text-red-500">*</span></Label>
-              <Textarea
-                placeholder="Areas for improvement (min 10 characters)"
-                value={weaknesses}
-                onChange={(e) => setWeaknesses(e.target.value)}
-                rows={3}
-                disabled={isReadOnly}
-              />
-              <p className={`text-xs text-right ${weaknesses.length < 10 && weaknesses.length > 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                {weaknesses.length} chars {weaknesses.length < 10 && weaknesses.length > 0 && '(min 10)'}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Overall Comments <span className="text-gray-400">(optional)</span></Label>
-              <Textarea
-                placeholder="Any additional notes..."
-                value={overallComments}
-                onChange={(e) => setOverallComments(e.target.value)}
-                rows={2}
-                disabled={isReadOnly}
-              />
-            </div>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Feedback & Notes</CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-8">
+            <AIReviewSection
+              id="strengths"
+              label="Strengths"
+              required={false}
+              eventId={team.labAssignments[0]?.round.roundName || 'global'} // Ideally global eventId, but we'll use a placeholder if eventId is missing in interface. We will use 'global' rate limiting for now.
+              value={strengths}
+              onChange={setStrengths}
+              disabled={isReadOnly}
+              placeholder="What did the team do well? (Type rough notes here)"
+              buttonLabel="AI Generate Strengths"
+            />
+            
+            <AIReviewSection
+              id="weaknesses"
+              label="Weaknesses"
+              required={true}
+              eventId={team.labAssignments[0]?.round.roundName || 'global'} 
+              value={weaknesses}
+              onChange={setWeaknesses}
+              disabled={isReadOnly}
+              placeholder="Areas for improvement (min 10 characters)"
+              buttonLabel="AI Generate Weaknesses"
+            />
+            
+            <AIReviewSection
+              id="improve"
+              label="Overall Comments"
+              required={false}
+              eventId={team.labAssignments[0]?.round.roundName || 'global'} 
+              value={overallComments}
+              onChange={setOverallComments}
+              disabled={isReadOnly}
+              placeholder="Any additional notes..."
+              buttonLabel="AI Polish Comments"
+            />
           </CardContent>
         </Card>
 
@@ -644,12 +700,22 @@ export default function ReviewFormPage({ params }: { params: Promise<{ teamId: s
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-semibold">Feedback for Next Round</CardTitle>
-              {!isReadOnly && (
-                <Button variant="outline" size="sm" onClick={addSuggestion} disabled={suggestions.length >= 5}>
-                  <Plus className="w-3 h-3 mr-1" />
-                  Add ({suggestions.length}/5)
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {!isReadOnly && (
+                  <AIActionButton 
+                    label="AI Assisstant"
+                    onClick={handleGenerateNextSteps}
+                    loading={generatingSuggestions}
+                    disabled={suggestions.length >= 5 || (strengths.length + weaknesses.length < 15)}
+                  />
+                )}
+                {!isReadOnly && (
+                  <Button variant="outline" size="sm" onClick={addSuggestion} disabled={suggestions.length >= 5}>
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add ({suggestions.length}/5)
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">

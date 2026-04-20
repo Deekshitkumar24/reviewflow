@@ -4,6 +4,7 @@ import { useStudentStore } from '@/stores/useStudentStore';
 import { useQuery } from '@tanstack/react-query';
 import studentApiClient from '@/lib/studentApiClient';
 import { Loader2, Users, BookOpen, CheckCircle, AlertTriangle, BarChart3 } from 'lucide-react';
+import SubmissionQualityChecker from '@/components/ui/SubmissionQualityChecker';
 import { EVALUATION_STATUS_CONFIG } from '@/types';
 import type { EvaluationStatus } from '@/types';
 
@@ -155,6 +156,9 @@ export default function StudentDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Submission Quality Checker (AI Feature G) */}
+      <SubmissionQualityChecker teamData={data} readinessCount={readinessCount} />
     </div>
   );
 }

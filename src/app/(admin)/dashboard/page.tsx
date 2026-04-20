@@ -145,7 +145,7 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                 <LineChart data={mockChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
@@ -190,8 +190,8 @@ export default function AdminDashboardPage() {
                       <div className="min-w-0">
                         <p className="font-medium text-sm text-gray-200 group-hover:text-white transition-colors truncate">{event.eventName}</p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {event.teamCount} teams · {event.roundCount} round{event.roundCount !== 1 ? 's' : ''}
-                          {event.eventDate ? ` · ${formatDistanceToNow(new Date(event.eventDate), { addSuffix: true })}` : ''}
+                          {event.teamCount} teams Â· {event.roundCount} round{event.roundCount !== 1 ? 's' : ''}
+                          {event.eventDate ? ` Â· ${formatDistanceToNow(new Date(event.eventDate), { addSuffix: true })}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-4 flex-shrink-0 ml-4">

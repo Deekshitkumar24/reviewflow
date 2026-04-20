@@ -4,6 +4,7 @@ import { reviews, teams, labs, suggestions, suggestionStatusLogs } from '@/db/sc
 import { isNull, eq } from 'drizzle-orm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AnalyticsCharts } from './components/AnalyticsCharts';
+import { FairnessAnalysis } from './components/FairnessAnalysis';
 import { Download, Activity, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -105,11 +106,11 @@ export default async function ReportsPage() {
           <Link href="/api/v1/reports/export?eventId=all&type=teams" target="_blank">
              <Button variant="outline" className="bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5"><Download className="mr-2 h-4 w-4" /> Export Teams</Button>
           </Link>
-          <Link href="/api/v1/reports/export?eventId=all&type=reviews" target="_blank">
-             <Button variant="outline" className="bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5"><Download className="mr-2 h-4 w-4" /> Export Reviews</Button>
-          </Link>
           <Link href="/api/v1/reports/export?eventId=all&type=results" target="_blank">
-             <RainbowButton><Download className="mr-2 h-4 w-4" /> Export Results</RainbowButton>
+             <Button variant="outline" className="bg-transparent border-white/10 text-gray-400 hover:text-white hover:bg-white/5"><Download className="mr-2 h-4 w-4" /> Export Results</Button>
+          </Link>
+          <Link href="/reports/report-print?eventId=all" target="_blank">
+             <RainbowButton><Activity className="mr-2 h-4 w-4" /> Auto Generate AI Report (PDF)</RainbowButton>
           </Link>
         </div>
       </div>
@@ -162,6 +163,8 @@ export default async function ReportsPage() {
         scoreData={data.scoreData} 
         labData={data.labData} 
       />
+
+      <FairnessAnalysis />
 
       <div className="mt-8">
         <h2 className="text-xl font-bold tracking-tight text-white mb-4">Suggestion Compliance Risk</h2>

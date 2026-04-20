@@ -13,6 +13,7 @@ import apiClient from '@/lib/apiClient';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SmartAssignmentPanel } from './components/SmartAssignmentPanel';
 
 interface EventOption { id: string; eventName: string; status: string; }
 interface LabOption { id: string; labName: string; }
@@ -46,7 +47,7 @@ export default function AssignmentsPage() {
   const eventIdParam = searchParams.get('eventId') ?? '';
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<'mentors' | 'coordinators'>('mentors');
+  const [activeTab, setActiveTab] = useState<'smart' | 'mentors' | 'coordinators'>('smart');
   const [selectedEventId, setSelectedEventId] = useState(eventIdParam);
   
   // Dialog state
@@ -79,19 +80,20 @@ export default function AssignmentsPage() {
   }, [events, selectedEventId]);
 
   useEffect(() => {
-    if (showAssignMentor || showAssignCoord) {
-      if (!labs.length && selectedEventId) {
-        apiClient.get(`/labs?eventId=${selectedEventId}`).then(res => setLabs(res.data.data ?? []));
-        apiClient.get(`/events/${selectedEventId}/rounds`).then(res => setRounds(res.data.data ?? []));
-      }
-      if (!mentors.length && showAssignMentor) {
-        apiClient.get('/users?role=mentor&limit=500').then(res => setMentors(res.data.data ?? []));
-      }
-      if (!coordinators.length && showAssignCoord) {
-        apiClient.get('/users?role=coordinator&limit=500').then(res => setCoordinators(res.data.data ?? []));
-      }
+    if (selectedEventId) {
+      apiClient.get(`/labs?eventId=${selectedEventId}`).then(res => setLabs(res.data.data ?? []));
+      apiClient.get(`/events/${selectedEventId}/rounds`).then(res => setRounds(res.data.data ?? []));
     }
-  }, [showAssignMentor, showAssignCoord, selectedEventId]);
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    if (showAssignMentor && !mentors.length) {
+      apiClient.get('/users?role=mentor&limit=500').then(res => setMentors(res.data.data ?? []));
+    }
+    if (showAssignCoord && !coordinators.length) {
+      apiClient.get('/users?role=coordinator&limit=500').then(res => setCoordinators(res.data.data ?? []));
+    }
+  }, [showAssignMentor, showAssignCoord, selectedEventId, mentors.length, coordinators.length]);
 
   const { data: assignmentsData, isLoading: loading, refetch: fetchData } = useQuery({
     queryKey: ['assignments', selectedEventId],
@@ -196,6 +198,7 @@ export default function AssignmentsPage() {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-4">
         <div className="flex justify-between items-center">
           <TabsList>
+            <TabsTrigger value="smart">Teams (Smart)</TabsTrigger>
             <TabsTrigger value="mentors">Mentors</TabsTrigger>
             <TabsTrigger value="coordinators">Coordinators</TabsTrigger>
           </TabsList>
@@ -203,12 +206,20 @@ export default function AssignmentsPage() {
             <Button onClick={() => setShowAssignMentor(true)} className="bg-[#1A56DB] hover:bg-[#1044A5] gap-2" size="sm">
               <UserPlus className="w-4 h-4" />Assign Mentor
             </Button>
-          ) : (
+          ) : activeTab === 'coordinators' ? (
             <Button onClick={() => setShowAssignCoord(true)} className="bg-orange-600 hover:bg-orange-700 gap-2" size="sm">
               <BookOpen className="w-4 h-4" />Assign Coordinator
             </Button>
-          )}
+          ) : null}
         </div>
+
+        <TabsContent value="smart" className="mt-0 space-y-4">
+          <SmartAssignmentPanel 
+            eventId={selectedEventId}
+            rounds={rounds}
+            onComplete={() => fetchData()}
+          />
+        </TabsContent>
 
         <TabsContent value="mentors" className="mt-0 space-y-4">
           {loading ? (

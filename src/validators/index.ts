@@ -55,6 +55,7 @@ export const createEventSchema = z.object({
     roundName: z.string().min(1).max(100),
     roundOrder: z.number().int().min(1),
   })).min(1, 'At least one round is required'),
+  scoringModel: z.any().optional(),
 });
 
 export const updateEventSchema = z.object({

@@ -18,6 +18,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/stores/useAppStore';
 import apiClient from '@/lib/apiClient';
 import { toast } from 'sonner';
+import { SimilarityCheck } from '../components/SimilarityCheck';
+import { FeedbackGeneratorPanel } from '../components/FeedbackGeneratorPanel';
 
 // ─── Types ──────────────────────────────────────────────────
 type AwardType = 'winner' | 'runner_up' | 'second_runner_up' | 'finalist' | 'special_mention' | 'participant' | '';
@@ -139,6 +141,7 @@ export default function ResultsManagementPage({ params }: { params: Promise<{ ev
 
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [activeFeedbackTeam, setActiveFeedbackTeam] = useState<{ id: string, name: string } | null>(null);
 
   const { data, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['results', eventId],
@@ -272,6 +275,15 @@ export default function ResultsManagementPage({ params }: { params: Promise<{ ev
         )}
       </AnimatePresence>
 
+      <FeedbackGeneratorPanel
+        isOpen={!!activeFeedbackTeam}
+        onClose={() => setActiveFeedbackTeam(null)}
+        teamId={activeFeedbackTeam?.id || ''}
+        teamName={activeFeedbackTeam?.name || ''}
+        eventId={eventId}
+        eventName={data.event.eventName}
+      />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -282,6 +294,7 @@ export default function ResultsManagementPage({ params }: { params: Promise<{ ev
           <p className="text-sm text-gray-400 mt-0.5">{data.teams.length} teams · sorted by average score</p>
         </div>
         <div className="flex items-center gap-2">
+          <SimilarityCheck eventId={eventId} />
           {!isLocked && (
             <Button
               className="bg-green-600 hover:bg-green-500 text-white gap-2 border-0"
@@ -439,7 +452,17 @@ export default function ResultsManagementPage({ params }: { params: Promise<{ ev
                         </td>
                         <td className="px-4 py-3">
                           {rowLocked ? (
-                            <Lock className="w-4 h-4 text-gray-600" />
+                            <div className="flex items-center gap-2">
+                              <Lock className="w-4 h-4 text-gray-600 hidden sm:block" />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setActiveFeedbackTeam({ id: team.teamId, name: team.teamName })}
+                                className="h-7 text-[10px] gap-1 text-purple-400 border-purple-500/20 bg-purple-500/10 hover:bg-purple-500/20 hover:text-purple-300 transition-colors"
+                              >
+                                AI Feedback
+                              </Button>
+                            </div>
                           ) : (
                             <Button
                               size="sm"

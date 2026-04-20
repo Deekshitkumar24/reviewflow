@@ -26,7 +26,8 @@ import {
   UserCircle,
   Clock, 
   ClipboardCheck, 
-  AlertTriangle
+  AlertTriangle,
+  Bot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +36,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
 import { GlobalSearch } from '@/components/app/GlobalSearch';
+import { TopbarAlertsBadge } from '@/components/ui/AlertsPanel';
+import { AIAssistantDrawer } from '@/components/app/AIAssistantDrawer';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -58,6 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const { user, clearAuth, sidebarCollapsed, toggleSidebar, darkMode, toggleDarkMode, unreadCount } = useAppStore();
   const [mounted, setMounted] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -200,19 +204,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </Button>
 
             {/* Notifications */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 relative text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-              aria-label="Notifications"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <Badge className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 text-[10px] bg-red-500 text-white border-2 border-white dark:border-gray-900 rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </Badge>
-              )}
-            </Button>
+            <TopbarAlertsBadge />
 
             <Separator orientation="vertical" className="h-6 mx-1 bg-white/10" />
 
@@ -261,11 +253,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 relative">
           <div className="max-w-[1280px] mx-auto">
             {children}
           </div>
+          
+          {/* AI Assistant FAB */}
+          <button
+            onClick={() => setIsAssistantOpen(true)}
+            className="fixed bottom-6 right-6 p-4 rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-2xl hover:shadow-blue-500/20 transition-all z-30 flex items-center justify-center group"
+            aria-label="Open AI Assistant"
+            title="Ask AI Assistant"
+          >
+             <Bot className="w-6 h-6 group-hover:scale-110 transition-transform" />
+          </button>
         </main>
+        
+        <AIAssistantDrawer 
+          isOpen={isAssistantOpen}
+          onClose={() => setIsAssistantOpen(false)}
+        />
       </div>
     </div>
   );

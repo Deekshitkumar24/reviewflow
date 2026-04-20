@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
 import { GlobalSearch } from '@/components/app/GlobalSearch';
+import { TopbarAlertsBadge } from '@/components/ui/AlertsPanel';
 
 const COORD_NAV = [
   { href: '/coordinator/dashboard', label: 'Dashboard', icon: ClipboardCheck },
@@ -76,6 +77,7 @@ export default function CoordinatorLayout({ children }: { children: React.ReactN
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <TopbarAlertsBadge />
             <Avatar className="h-8 w-8 cursor-pointer" onClick={() => router.push('/profile')} title="My profile">
               <AvatarFallback className="bg-emerald-500 text-white text-xs">{initials}</AvatarFallback>
             </Avatar>

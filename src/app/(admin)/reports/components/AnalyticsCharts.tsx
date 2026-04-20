@@ -25,7 +25,7 @@ export function AnalyticsCharts({ verdictData, scoreData, labData }: AnalyticsCh
              {scoreData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-gray-500">No data yet</div>
              ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                   <AreaChart data={scoreData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
@@ -55,7 +55,7 @@ export function AnalyticsCharts({ verdictData, scoreData, labData }: AnalyticsCh
              {labData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-gray-500">No data yet</div>
              ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                   <BarChart data={labData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                     <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#666' }} stroke="rgba(255,255,255,0.1)" />
@@ -79,7 +79,7 @@ export function AnalyticsCharts({ verdictData, scoreData, labData }: AnalyticsCh
              {verdictData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-gray-500">No data yet</div>
              ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                   <PieChart>
                     <Pie
                       data={verdictData}
@@ -115,7 +115,7 @@ export function AnalyticsCharts({ verdictData, scoreData, labData }: AnalyticsCh
              {scoreData.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-gray-500">No data yet</div>
              ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                   <LineChart data={scoreData} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                     <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#666' }} stroke="rgba(255,255,255,0.1)" />

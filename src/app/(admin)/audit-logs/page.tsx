@@ -11,6 +11,7 @@ import apiClient from '@/lib/apiClient';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useDebounce } from '@/hooks/useDebounce';
+import { AIBadge } from '@/components/ui/AIBadge';
 
 interface AuditLog {
   id: string;
@@ -101,6 +102,7 @@ export default function AuditLogsPage() {
           <option value="result" className="bg-[#111]">Result</option>
           <option value="lab_assignment" className="bg-[#111]">Lab Assignment</option>
           <option value="mentor_assignment" className="bg-[#111]">Mentor Assignment</option>
+          <option value="AI_Feature" className="bg-[#111]">AI Feature</option>
         </select>
       </div>
 
@@ -127,6 +129,7 @@ export default function AuditLogsPage() {
                   {log.userRole && <span className="text-gray-600 opacity-70">({log.userRole})</span>}
                   <span className="text-gray-600">→</span>
                   <span className="text-purple-400">{log.entityType}</span>
+                  {log.entityType === 'AI_Feature' && <div className="ml-2 scale-75 transform origin-left"><AIBadge /></div>}
                   {log.entityId && <span className="text-purple-400/70">#{log.entityId.slice(0, 8)}</span>}
                   {log.ipAddress && <span className="text-gray-600 ml-4 hidden md:inline">ip: {log.ipAddress}</span>}
                 </div>

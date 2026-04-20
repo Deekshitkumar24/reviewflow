@@ -79,6 +79,7 @@ export async function POST(request: Request) {
         totalRounds: data.totalRounds,
         suggestionsEnabled: data.suggestionsEnabled,
         allowMultiMentorReview: data.allowMultiMentorReview,
+        scoringModel: data.scoringModel,
         createdById: user.sub,
       }).returning();
       

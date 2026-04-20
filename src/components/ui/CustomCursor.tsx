@@ -12,7 +12,7 @@ export default function CustomCursor() {
   
   // Real mouse position
   const mousePos = useRef({ x: -100, y: -100 });
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number>(0);
   const isHovering = useRef(false);
 
   useEffect(() => {

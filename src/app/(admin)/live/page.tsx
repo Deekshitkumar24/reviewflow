@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import apiClient from '@/lib/apiClient';
 import { toast } from 'sonner';
+import { AlertsPanel } from '@/components/ui/AlertsPanel';
 
 interface LabStat {
   labId: string;
@@ -146,20 +147,22 @@ export default function LiveMonitorPage() {
         </div>
       )}
 
-      {/* Lab Cards */}
-      {loading && !data ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl bg-white/5" />)}
-        </div>
-      ) : !data || data.labs.length === 0 ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center flex flex-col items-center">
-          <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ repeat: Infinity, duration: 2 }}>
-            <AlertCircle className="w-12 h-12 text-blue-500 mb-4" />
-          </motion.div>
-          <p className="text-lg font-medium text-white tracking-tight">No live data found</p>
-          <p className="text-sm text-gray-500 mt-1">Select an active event above or wait for data.</p>
-        </motion.div>
-      ) : (
+      {/* Lab Cards and Alerts Panel */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <div className="xl:col-span-3">
+          {loading && !data ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl bg-white/5" />)}
+            </div>
+          ) : !data || data.labs.length === 0 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center flex flex-col items-center">
+              <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ repeat: Infinity, duration: 2 }}>
+                <AlertCircle className="w-12 h-12 text-blue-500 mb-4" />
+              </motion.div>
+              <p className="text-lg font-medium text-white tracking-tight">No live data found</p>
+              <p className="text-sm text-gray-500 mt-1">Select an active event above or wait for data.</p>
+            </motion.div>
+          ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {data.labs.map((lab, i) => {
             const statusColor = STATUS_COLORS[lab.status as keyof typeof STATUS_COLORS] ?? STATUS_COLORS.delayed;
@@ -209,6 +212,11 @@ export default function LiveMonitorPage() {
           })}
         </div>
       )}
+        </div>
+        <div className="xl:col-span-1">
+          <AlertsPanel eventId={eventId} />
+        </div>
+      </div>
     </div>
   );
 }
