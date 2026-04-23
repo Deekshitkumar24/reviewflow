@@ -1,9 +1,10 @@
 export const runtime = 'nodejs';
 
 import { db } from '@/db';
-import { teams, labAssignments, mentorAssignments, coordinatorAssignments } from '@/db/schema';
+import { teams, labAssignments, mentorAssignments, coordinatorAssignments, studentTeamAuth } from '@/db/schema';
 import { eq, or, ilike, and, isNull, desc, count, inArray } from 'drizzle-orm';
 import { withAuth, successResponse, errorResponse, validateBody, parsePagination, paginationMeta, createAuditLog } from '@/lib/api-utils';
+import { hashPassword } from '@/lib/auth';
 import { z } from 'zod';
 
 const createTeamSchema = z.object({
@@ -14,6 +15,8 @@ const createTeamSchema = z.object({
   department: z.string().optional(),
   collegeName: z.string().optional(),
   eventId: z.string().uuid(),
+  loginEmail: z.string().email('Invalid student login email').transform(v => v.toLowerCase().trim()),
+  leaderPhone: z.string().max(20).optional(),
 });
 
 // GET /api/v1/teams — List teams
@@ -110,6 +113,17 @@ export async function POST(request: Request) {
       return errorResponse('TEAM_EXISTS', 'Team name must be unique within an event', 409);
     }
 
+    // Check login email uniqueness within the same event
+    const existingAuth = await db.query.studentTeamAuth.findFirst({
+      where: (sta, { eq: e }) => e(sta.loginEmail, data.loginEmail),
+      with: {
+        team: { columns: { eventId: true, deletedAt: true } },
+      },
+    });
+    if (existingAuth && existingAuth.team && existingAuth.team.eventId === data.eventId && !existingAuth.team.deletedAt) {
+      return errorResponse('DUPLICATE', 'This student login email is already in use for this event', 409);
+    }
+
     const inserted = await db.insert(teams).values({
       teamName: data.teamName,
       projectTitle: data.projectTitle,
@@ -123,6 +137,20 @@ export async function POST(request: Request) {
 
     const team = inserted[0];
 
+    // Auto-generate default password: ReviewFlow@<last4DigitsOfPhone>
+    const phone = data.leaderPhone || '';
+    const last4 = phone.replace(/\D/g, '').slice(-4) || '0000';
+    const defaultPassword = `ReviewFlow@${last4}`;
+    const passwordHash = await hashPassword(defaultPassword);
+
+    // Create student auth credentials
+    await db.insert(studentTeamAuth).values({
+      teamId: team.id,
+      loginEmail: data.loginEmail,
+      passwordHash,
+      mustChangePassword: true,
+    });
+
     const teamWithEvent = await db.query.teams.findFirst({
       where: eq(teams.id, team.id),
       with: { event: { columns: { eventName: true } } }
@@ -133,9 +161,9 @@ export async function POST(request: Request) {
       action: 'team.created',
       entityType: 'team',
       entityId: team.id,
-      newValues: { teamName: team.teamName, eventId: team.eventId },
+      newValues: { teamName: team.teamName, eventId: team.eventId, loginEmail: data.loginEmail },
     });
 
-    return successResponse(teamWithEvent, 201);
+    return successResponse({ ...teamWithEvent, defaultPassword }, 201);
   }, ['super_admin', 'admin']);
 }

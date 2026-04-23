@@ -88,6 +88,7 @@ export async function POST(request: Request) {
       teamId: newTeam.id,
       loginEmail: data.loginEmail,
       passwordHash,
+      mustChangePassword: true,
     });
 
     // Audit log
