@@ -141,18 +141,33 @@ export async function POST(request: Request) {
         unassignedIndex++;
       }
 
-      // Generate summary deterministically
-      const summaryText = `Distributed ${unassignedTeams.length} teams across ${eventLabs.length} labs. ` +
-        (overflowCount > 0 
-          ? `WARNING: ${overflowCount} teams allocated beyond standard capacity. ` 
-          : `All teams fit within existing capacity. `) +
-        (domainMatches > 0 ? `${domainMatches} teams matched by domain similarity.` : '');
+      // AI enhancements
+      const aiPrompt = `You are a Senior Technical Resources Coordinator assigning teams to labs. Here is a brief data snapshot of your latest automated assignments:
+Total Teams Assigned: ${unassignedTeams.length}
+Total Labs Utilized: ${eventLabs.length}
+Domain Synergies Found: ${domainMatches}
+Capacity Overflows: ${overflowCount}
+
+Write a highly professional, single-paragraph executive summary explaining the rationale for these assignments. Highlight domain synergies as 'optimal technical environment matches' and capacity overflows (if any) as 'strategic resource distribution'. Limit to 3 sentences. Output plain text.`;
+
+      let aiSummaryText = `Distributed ${unassignedTeams.length} teams across ${eventLabs.length} labs.`;
+      
+      if (unassignedTeams.length > 0) {
+        try {
+           const aiRes = await callGemini({ systemPrompt: aiPrompt, userInput: "Generate the assignment summary.", routeName: "assignments-suggest-summary" });
+           if (!aiRes.error && aiRes.result) {
+             aiSummaryText = aiRes.result;
+           }
+        } catch(e) {
+           console.error("AI Assignment Summary Generation Failed.");
+        }
+      }
 
       return NextResponse.json({
         success: true,
         data: {
           suggestions,
-          summary: summaryText,
+          summary: aiSummaryText,
         }
       });
     } catch (error: any) {

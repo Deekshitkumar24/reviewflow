@@ -119,19 +119,18 @@ export async function POST(req: Request) {
     }
 
     // 3. AI Generation
-    const systemPrompt = `You are a professional Data Analyst and Operations Expert generating the textual summaries for an Event Report.
-    
-Based strictly on the data provided, you must return EXACTLY this JSON structure:
+    const systemPrompt = `You are an elite Operations Director and Data Analyst synthesizing an Event Post-Mortem Report.
+
+Based strictly on the data provided, you must return EXACTLY this JSON structure. Do NOT wrap the response in markdown code blocks:
 {
-  "executiveSummary": "1 to 2 paragraphs summarizing the overall health and performance of the event. Be professional and objective.",
-  "recommendations": ["A specific operational recommendation", "Another specific operational recommendation", "etc."]
+  "executiveSummary": "A highly professional, 2-paragraph executive summary detailing the overall health, performance, and key outcomes of the event based strictly on the provided statistics.",
+  "recommendations": [ array of exactly 3 specific, data-driven operational improvements for the next event ]
 }
 
-Constraints:
-- NEVER invent or hallucinate data. Only reference the metrics provided.
-- Do NOT generate markdown formatting inside the text (no ** or #).
-- Recommendations must be actionable insights based on anomalies or stats. (3 to 4 points max).
-`;
+# CRITICAL CONSTRAINTS:
+1. **Zero Hallucination:** You may only cite the exact metrics, team names, and anomalies provided in the prompt. Do not invent any data.
+2. **Plain Text JSON Values:** Do not use ANY markdown formatting (no bolding **, no headers #) inside the JSON string values.
+3. **Tone:** Corporate, objective, analytical, and authoritative.`;
 
     const userInput = `Event Name: ${eventName}
 Participation: ${participation.totalTeams} Teams, ${participation.totalLabs} Labs, ${participation.totalReviews} Reviews Completed.

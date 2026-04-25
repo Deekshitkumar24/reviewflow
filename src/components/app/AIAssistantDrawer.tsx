@@ -36,8 +36,32 @@ export function AIAssistantDrawer({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const saved = localStorage.getItem('reviewflow_chat_history');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved).map((m: any) => ({
+          ...m,
+          createdAt: new Date(m.createdAt)
+        }));
+        if (parsed.length > 0) setMessages(parsed);
+      } catch (e) {
+        console.error("Failed to parse chat history", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 1) {
+      localStorage.setItem('reviewflow_chat_history', JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
     }
   }, [messages, isLoading]);
 
@@ -57,8 +81,10 @@ export function AIAssistantDrawer({
 
     try {
       // Send history (exclude the greeting, filter for just what API needs)
-      const conversationalHistory = messages
-        .filter(m => m.id !== 'greeting')
+      // Capture the updated messages including the one we just added
+      const updatedMessages = [...messages, userMessage];
+      const conversationalHistory = updatedMessages
+        .filter(m => m.id !== 'greeting' && m.id !== userMessage.id) // exclude greeting and current message
         .map(m => ({ role: m.role, content: m.content }));
 
       const response = await apiClient.post('/ai/assistant', {
@@ -144,7 +170,7 @@ export function AIAssistantDrawer({
             </div>
 
             {/* Chat Area */}
-            <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+            <div className="flex-1 overflow-y-auto p-4" ref={scrollRef}>
               <div className="space-y-4">
                 {messages.map((msg) => (
                   <div
@@ -192,7 +218,7 @@ export function AIAssistantDrawer({
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Input Area */}
             <div className="p-4 bg-[#161616] border-t border-white/10">
@@ -224,7 +250,7 @@ export function AIAssistantDrawer({
                   className="rounded-full h-10 w-10 bg-blue-600 hover:bg-blue-500 text-white shadow-lg transition-all"
                 >
                   {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
                   ) : (
                     <Send className="w-4 h-4 ml-0.5" />
                   )}

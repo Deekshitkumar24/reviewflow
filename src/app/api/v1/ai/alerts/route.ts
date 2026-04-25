@@ -2,62 +2,66 @@ import { NextResponse } from "next/server";
 import { Alert } from "@/types/ai";
 import { logAIAction } from "@/lib/auditLogger";
 
+let cachedAlerts: { eventId: string; data: Alert[]; timestamp: number } | null = null;
+const CACHE_DURATION_MS = 60000; // 60 seconds
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const eventId = body?.eventId || "unknown";
 
-    const alerts: Alert[] = [];
+    // Rate Limiting / Caching trick for polling dashboard
+    if (cachedAlerts && cachedAlerts.eventId === eventId && Date.now() - cachedAlerts.timestamp < CACHE_DURATION_MS) {
+       return NextResponse.json({ alerts: cachedAlerts.data });
+    }
 
-    // Real implementation would execute actual DB queries here using drizzle:
-    // e.g. const inactiveJudges = await db.select().from(reviews).where(...)
+    const { db } = await import("@/db");
+    const { issues, teams } = await import("@/db/schema");
+    const { eq, and, isNull } = await import("drizzle-orm");
+    const { callGemini } = await import("@/lib/ai");
 
-    // Simulated Statistical Rules for Demo/MVP (safely additive)
-    const now = new Date();
+    // Fetch brief system state to feed AI
+    let rawAnomalies = "";
+    if (eventId !== "unknown") {
+       const staleIssuesCount = await db.$count(issues, and(eq(issues.eventId, eventId), eq(issues.status, "open")));
+       const noDescTeamsCount = await db.$count(teams, and(eq(teams.eventId, eventId), isNull(teams.projectDescription)));
+       rawAnomalies = `Currently there are ${staleIssuesCount} open issues unresolved. There are ${noDescTeamsCount} teams with completely empty project descriptions.`;
+    }
+
+    let alerts: Alert[] = [];
     
-    // Condition 1: SUBMISSION_MISSING
-    alerts.push({
-      id: `alert-sub-${Date.now()}`,
-      type: "SUBMISSION_MISSING",
-      severity: "warning",
-      message: "Team 'Neon Knights' registered but has no submission with under 45 mins left.",
-      affectedEntity: "Team Neon Knights",
-      timestamp: now.toISOString(),
-      resolved: false,
-    });
+    // Wire Gemini to dynamically evaluate real system states
+    const systemPrompt = `You are a strict System Integrity Monitor. Analyze the provided current system state variables and generate an array of "alerts" identifying any problems.
+Return EXACTLY a JSON array of alert objects with the following schema perfectly adhered to:
+[{
+  "id": "unique-string",
+  "type": "SYSTEM_ANOMALY",
+  "severity": "info" | "warning" | "critical",
+  "message": "Human readable technical alert.",
+  "affectedEntity": "Name of component or metric",
+  "timestamp": "ISO Date string",
+  "resolved": false
+}]
 
-    // Condition 2: JUDGE_INACTIVE
-    alerts.push({
-      id: `alert-judge-${Date.now()}`,
-      type: "JUDGE_INACTIVE",
-      severity: "critical",
-      message: "Judge Sarah Connor has not scored anything in 2+ hours during the judging window.",
-      affectedEntity: "Sarah Connor (Judge)",
-      timestamp: now.toISOString(),
-      resolved: false,
-    });
+# RULES:
+- Do NOT hallucinate names.
+- If the system state is empty or normal, return an empty array [].
+- Only trigger a warning if an anomaly count is > 0.`;
 
-    // Condition 3: SCORE_INCONSISTENCY
-    alerts.push({
-      id: `alert-score-${Date.now()}`,
-      type: "SCORE_INCONSISTENCY",
-      severity: "warning",
-      message: "Team 'Syntax Errors' scored by 2+ judges with more than 4 point gap.",
-      affectedEntity: "Team Syntax Errors",
-      timestamp: now.toISOString(),
-      resolved: false,
-    });
+    const userInput = `System State:\n${rawAnomalies || "All standard metrics are green."}`;
 
-    // Condition 4: CAPACITY_ISSUE
-    alerts.push({
-      id: `alert-cap-${Date.now()}`,
-      type: "CAPACITY_ISSUE",
-      severity: "info",
-      message: "Lab 4B has more active teams than its listed capacity (12/10).",
-      affectedEntity: "Lab 4B",
-      timestamp: now.toISOString(),
-      resolved: false,
-    });
+    try {
+      const aiResult = await callGemini({ systemPrompt, userInput, routeName: "anomaly-alerts", jsonMode: true });
+      if (!aiResult.error && Array.isArray(aiResult)) {
+        alerts = aiResult;
+      } else if (aiResult.alerts && Array.isArray(aiResult.alerts)) {
+        alerts = aiResult.alerts;
+      }
+    } catch(e) {
+      console.error("AI Alert Generation parsed failed.");
+    }
+
+    cachedAlerts = { eventId, data: alerts, timestamp: Date.now() };
 
     await logAIAction({
       userId: body?.userId || "system",

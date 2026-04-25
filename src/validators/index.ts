@@ -30,12 +30,14 @@ export const createUserSchema = z.object({
   email: z.string().email('Invalid email address').transform(v => v.toLowerCase().trim()),
   phone: z.string().max(20).optional(),
   role: z.enum(['admin', 'mentor', 'coordinator']),
+  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
 });
 
 export const updateUserSchema = z.object({
   fullName: z.string().min(2).max(120).optional(),
   phone: z.string().max(20).optional(),
   status: z.enum(['active', 'disabled']).optional(),
+  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
 });
 
 // ═══════════════════════════════════════

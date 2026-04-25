@@ -56,7 +56,10 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [newUser, setNewUser] = useState({ fullName: '', email: '', phone: '', role: 'mentor' });
+  const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [targetUser, setTargetUser] = useState<{ id: string, name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [newUser, setNewUser] = useState({ fullName: '', email: '', phone: '', role: 'mentor', password: '' });
   const [creating, setCreating] = useState(false);
   const debouncedSearch = useDebounce(search, 350);
 
@@ -84,9 +87,13 @@ export default function UsersPage() {
     setCreating(true);
     try {
       const { data } = await apiClient.post('/users', newUser);
-      toast.success(`User created! Temp password: ${data.data.tempPassword}`, { duration: 15000 });
+      if (data.data.tempPassword) {
+        toast.success(`User created! Temp password: ${data.data.tempPassword}`, { duration: 15000 });
+      } else {
+        toast.success('User created successfully with custom password!');
+      }
       setShowCreateDialog(false);
-      setNewUser({ fullName: '', email: '', phone: '', role: 'mentor' });
+      setNewUser({ fullName: '', email: '', phone: '', role: 'mentor', password: '' });
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     } catch (err: unknown) {
@@ -102,11 +109,29 @@ export default function UsersPage() {
     } catch { toast.error('Failed to disable user'); }
   };
 
-  const handleResetPassword = async (userId: string, name: string) => {
+  const openChangePassword = (userId: string, name: string) => {
+    setTargetUser({ id: userId, name });
+    setNewPassword('');
+    setShowChangePasswordDialog(true);
+  };
+
+  const submitChangePassword = async (autoGenerate: boolean = false) => {
+    if (!targetUser) return;
+    setCreating(true);
     try {
-      const { data } = await apiClient.patch(`/users/${userId}`, { resetPassword: true });
-      toast.success(`New temp password for ${name}: ${data.data.tempPassword}`, { duration: 20000 });
-    } catch { toast.error('Failed to reset password'); }
+      const payload = autoGenerate ? { resetPassword: true } : { password: newPassword };
+      const { data } = await apiClient.patch(`/users/${targetUser.id}`, payload);
+      if (autoGenerate && data.data.tempPassword) {
+        toast.success(`New temp password for ${targetUser.name}: ${data.data.tempPassword}`, { duration: 20000 });
+      } else {
+        toast.success(`Password updated for ${targetUser.name}`);
+      }
+      setShowChangePasswordDialog(false);
+    } catch { 
+      toast.error('Failed to change password'); 
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -182,7 +207,7 @@ export default function UsersPage() {
                         <MoreHorizontal className="w-4 h-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="bg-[#111] border-white/10 text-gray-300">
-                        <DropdownMenuItem className="hover:bg-white/5 hover:text-white focus:bg-white/5 focus:text-white cursor-pointer" onClick={() => handleResetPassword(user.id, user.fullName)}>Reset Password</DropdownMenuItem>
+                        <DropdownMenuItem className="hover:bg-white/5 hover:text-white focus:bg-white/5 focus:text-white cursor-pointer" onClick={() => openChangePassword(user.id, user.fullName)}>Change Password</DropdownMenuItem>
                         <DropdownMenuSeparator className="bg-white/10" />
                         {user.status === 'active'
                           ? <DropdownMenuItem className="text-red-400 hover:text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-300 cursor-pointer" onClick={() => handleDisable(user.id)}>Disable Account</DropdownMenuItem>
@@ -231,10 +256,44 @@ export default function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5"><Label className="text-gray-400">Custom Password (optional)</Label><Input type="password" placeholder="Leave blank to auto-generate" className="bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)} className="bg-transparent border-white/10 text-gray-300 hover:bg-white/5 hover:text-white">Cancel</Button>
             <Button onClick={handleCreateUser} disabled={creating} className="bg-blue-600 hover:bg-blue-500 text-white border-0">{creating ? 'Creating...' : 'Create User'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Password Dialog */}
+      <Dialog open={showChangePasswordDialog} onOpenChange={setShowChangePasswordDialog}>
+        <DialogContent className="sm:max-w-[420px] bg-[#111] border-white/10 text-white shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold tracking-tight text-white">Change Password</DialogTitle>
+            <DialogDescription className="text-gray-500">
+              Set a new password for {targetUser?.name} or auto-generate a temporary one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label className="text-gray-400">New Password</Label>
+              <Input 
+                type="password" 
+                placeholder="Enter custom password..." 
+                className="bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" 
+                value={newPassword} 
+                onChange={(e) => setNewPassword(e.target.value)} 
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => submitChangePassword(true)} disabled={creating} className="bg-transparent border-white/10 text-gray-300 hover:bg-white/5 hover:text-white mr-auto">
+              Auto-generate
+            </Button>
+            <Button variant="outline" onClick={() => setShowChangePasswordDialog(false)} className="bg-transparent border-white/10 text-gray-300 hover:bg-white/5 hover:text-white">Cancel</Button>
+            <Button onClick={() => submitChangePassword(false)} disabled={creating || newPassword.length < 8} className="bg-blue-600 hover:bg-blue-500 text-white border-0">
+              {creating ? 'Saving...' : 'Set Password'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

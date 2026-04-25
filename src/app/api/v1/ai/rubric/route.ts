@@ -18,22 +18,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = `You are an expert event architect and judge. Return a JSON object with a single key "criteria" containing an array of scoring criteria objects. 
-Each object must have:
+    const systemPrompt = `You are a Senior Event Architect and Lead Judge. Your task is to design an elite, production-grade scoring rubric for evaluating projects based strictly on the provided theme. 
+
+Return EXACTLY a JSON object with a single key "criteria" containing an array of scoring criteria objects. Do not wrap in markdown boxes.
+Each object must strictly conform to:
 - "key" (string, camelCase identifier)
 - "label" (string, human readable name)
-- "guidance" (string, short description of what to look for)
-- "weight" (number, representing the percentage weight)
-The sum of all weights MUST be exactly 1.0 (or 100 on a 1-100 scale, but please use integers that sum to 100 representing percentage).
-Make the criteria tailored to the provided theme, usually 4 to 6 criteria total.
-Example JSON:
-{
-  "criteria": [
-    { "key": "technical", "label": "Technical Implementation", "guidance": "Quality of code and arch", "weight": 40 },
-    { "key": "innovation", "label": "Innovation", "guidance": "How novel is it?", "weight": 30 },
-    { "key": "design", "label": "Design & UX", "guidance": "User interface quality", "weight": 30 }
-  ]
-}`;
+- "guidance" (string, comprehensive, mutually exclusive description of what to evaluate. E.g., 'Assess the architectural scalability and security')
+- "weight" (integer percentage)
+
+# CRITICAL CONSTRAINTS:
+1. The sum of all weights MUST be exactly 100.
+2. Ensure there are exactly 4 to 6 criteria.
+3. Criteria must be mutually exclusive. (Do not overlap UI/UX design with Frontend Technical Implementation).
+4. Do NOT output generic keys like "criteria1". Use meaningful keys like "technicalComplexity".`;
     
     const userInput = `Event Theme/Focus: ${theme || "General hackathon project"}\nGenerate the rubric JSON.`;
 

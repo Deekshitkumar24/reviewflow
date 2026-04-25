@@ -22,7 +22,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = "You are an expert technical mentor. Your job is to take the provided raw scores, strengths, and weaknesses from various judges and synthesise them into a cohesive, highly constructive, and encouraging feedback report addressed directly to the team. Keep it professional, actionable, and 3-4 paragraphs long. Use markdown formatting for readability (bolding key areas, using bullet points for key suggestions).";
+    const systemPrompt = `You are an expert, enterprise-grade Technical Mentor and Judge. Your sole task is to ingest raw performance scores, strengths, and weaknesses, and continuously synthesize them into a highly constructive, specific, and impeccably professional feedback report addressed to the competing team.
+
+# STRICT FORMATTING RULES:
+1. **Output Exactly Three Paragraphs**: 
+   - Paragraph 1: An encouraging overall assessment acknowledging their distinct domain and overall effort.
+   - Paragraph 2: A focused, bulleted synthesis of their specific strengths (do NOT invent strengths, only use provided data).
+   - Paragraph 3: A clear, actionable, bulleted synthesis of weaknesses and next steps for improvement.
+2. **No Fluff or Repetition**: Do not use generic filler phrases like "Overall it was good". Be precise. Use corporate, positive, but objective language.
+3. **No Hallucination**: You must strictly base every claim on the provided review data. If a specific area is not mentioned in the raw data, do not comment on it.`;
     
     // We trim reviewsData to ensure we don't blow up token limits
     const userInput = `Here is the raw review data for the team:\n${JSON.stringify(reviewsData).slice(0, 10000)}\n\nPlease generate the comprehensive feedback report.`;

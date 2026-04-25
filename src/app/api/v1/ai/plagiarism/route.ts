@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { PlagiarismResult } from "@/types/ai";
 import { logAIAction } from "@/lib/auditLogger";
+import { callGemini } from "@/lib/ai";
 import natural from "natural";
 
 export async function POST(req: Request) {
@@ -12,65 +13,78 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: true, message: "Missing eventId" }, { status: 400 });
     }
 
-    // Real application would query DB for all submission texts
-    // e.g. const submissions = await db.select().from(results).where({ eventId });
-    
-    // Mock simulation data
-    const mockSubmissions = [
-      { id: "team1", name: "Neon Knights", text: "Our application is a decentralized AI marketplace leveraging smart contracts on Ethereum." },
-      { id: "team2", name: "Cyber Punks", text: "We built an AI marketplace using Ethereum smart contracts for decentralized compute." },
-      { id: "team3", name: "Algo Rhythms", text: "A fresh new approach to sorting algorithms with visualizers and step-by-step guides." },
-      { id: "team4", name: "Data Miners", text: "Predictive modeling and big data analysis for upcoming tech trends." }
-    ];
+    // Query Real DB
+    const { db } = await import("@/db");
+    const { teams } = await import("@/db/schema");
+    const { eq, and, isNotNull, isNull } = await import("drizzle-orm");
+
+    const realSubmissions = await db.select({
+      id: teams.id,
+      name: teams.teamName,
+      text: teams.projectDescription
+    }).from(teams).where(
+      and(
+        eq(teams.eventId, eventId),
+        isNotNull(teams.projectDescription),
+        isNull(teams.deletedAt)
+      )
+    );
+
+    if (realSubmissions.length < 2) {
+      return NextResponse.json({
+        flaggedPairs: [],
+        checkedAt: new Date().toISOString()
+      } as PlagiarismResult);
+    }
 
     const TfIdf = natural.TfIdf;
     const tfidf = new TfIdf();
 
-    mockSubmissions.forEach(sub => tfidf.addDocument(sub.text));
+    realSubmissions.forEach(sub => tfidf.addDocument(sub.text || ""));
 
     const flaggedPairs: PlagiarismResult["flaggedPairs"] = [];
     
-    for (let i = 0; i < mockSubmissions.length; i++) {
-        for (let j = i + 1; j < mockSubmissions.length; j++) {
-            // Calculate cosine similarity approximation with tf-idf
-            let dotProduct = 0;
-            let normI = 0;
-            let normJ = 0;
-
-            const docI = tfidf.listTerms(i);
-            const docJ = tfidf.listTerms(j);
-            
-            const termsMapI = new Map<string, number>();
-            const termsMapJ = new Map<string, number>();
+    // Quick TF-IDF pass to find candidates
+    for (let i = 0; i < realSubmissions.length; i++) {
+        for (let j = i + 1; j < realSubmissions.length; j++) {
+            let dotProduct = 0, normI = 0, normJ = 0;
+            const docI = tfidf.listTerms(i), docJ = tfidf.listTerms(j);
+            const termsMapI = new Map<string, number>(), termsMapJ = new Map<string, number>();
             
             docI.forEach(t => termsMapI.set(t.term, t.tfidf));
             docJ.forEach(t => termsMapJ.set(t.term, t.tfidf));
 
             const allTerms = new Set([...Array.from(termsMapI.keys()), ...Array.from(termsMapJ.keys())]);
-
             allTerms.forEach(term => {
-                const wi = termsMapI.get(term) || 0;
-                const wj = termsMapJ.get(term) || 0;
-                dotProduct += wi * wj;
-                normI += wi * wi;
-                normJ += wj * wj;
+                const wi = termsMapI.get(term) || 0, wj = termsMapJ.get(term) || 0;
+                dotProduct += wi * wj; normI += wi * wi; normJ += wj * wj;
             });
 
-            const similarityScore = (Math.sqrt(normI) && Math.sqrt(normJ))
-                ? dotProduct / (Math.sqrt(normI) * Math.sqrt(normJ))
-                : 0;
-            
+            const similarityScore = (Math.sqrt(normI) && Math.sqrt(normJ)) ? dotProduct / (Math.sqrt(normI) * Math.sqrt(normJ)) : 0;
             const percentage = Math.round(similarityScore * 100);
             
-            if (percentage > 70) {
-                // Determine overlapping sections (shared terms for explanation)
-                const overlapping = docI.filter(t => termsMapJ.has(t.term)).map(t => t.term);
+            if (percentage > 50) {
+                // If highly similar, use AI to extract the structural insight
+                const systemPrompt = \`You are an AI similarity analyst. Given two project descriptions that have been statistically flagged for plagiarism (\${percentage}% overlap), extract exactly 1-3 crisp bullet points representing the conceptual overlaps or identical phrases. Return ONLY a JSON array of strings. Do not wrap in markdown.\`;
                 
+                const userInput = \`Description A: \${realSubmissions[i].text}\\n\\nDescription B: \${realSubmissions[j].text}\`;
+                
+                let overlappingSections = ["High statistical similarity detected based on lexical overlap."];
+                
+                try {
+                  const aiOverlapResult = await callGemini({ systemPrompt, userInput, routeName: "plagiarism-inspector", jsonMode: true });
+                  if (!aiOverlapResult.error && Array.isArray(aiOverlapResult)) {
+                     overlappingSections = aiOverlapResult.filter((a: any) => typeof a === 'string').slice(0, 3);
+                  }
+                } catch(e) {
+                  console.error("Gemini overlap analysis failed, falling back to basic terms.");
+                }
+
                 flaggedPairs.push({
-                    team1: { id: mockSubmissions[i].id, name: mockSubmissions[i].name },
-                    team2: { id: mockSubmissions[j].id, name: mockSubmissions[j].name },
+                    team1: { id: realSubmissions[i].id, name: realSubmissions[i].name },
+                    team2: { id: realSubmissions[j].id, name: realSubmissions[j].name },
                     similarityScore: percentage,
-                    overlappingSections: overlapping.length > 5 ? overlapping.slice(0, 5) : overlapping,
+                    overlappingSections
                 });
             }
         }
@@ -85,7 +99,7 @@ export async function POST(req: Request) {
       userId: body?.userId || "system",
       eventId,
       feature: "Plagiarism Detector",
-      input: { eventId },
+      input: { eventId, checkedCount: realSubmissions.length },
       output: { totalPairsFlagged: flaggedPairs.length },
     });
 

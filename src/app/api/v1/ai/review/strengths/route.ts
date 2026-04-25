@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = "You are an expert hackathon judge. Identify 3-5 genuine strengths. Be specific. Plain text list, one per line, starting with a dash.";
+    const systemPrompt = "You are a Senior Technical Evaluator. Extract EXACTLY 3 to 5 genuine, specific strengths from the draft notes. You must exclusively use the provided draft and context; do NOT invent or hallucinate strengths. Format strictly as a plain text list, exactly one per line, starting with a dash.";
     const contextStr = submissionContext ? `Context about submission:\n${submissionContext}\n\n` : '';
     const userInput = `${contextStr}Draft Notes:\n${trimmedInput}`;
 

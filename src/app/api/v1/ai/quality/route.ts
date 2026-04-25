@@ -42,20 +42,21 @@ export async function POST(req: Request) {
         }, { status: 400 });
     }
 
-    const systemPrompt = `You are a strict, expert hackathon judge screening submissions for completeness, clarity, and quality.
-Analyze the provided submission details and return a JSON object evaluating its "readiness" to be presented to judges.
+    const systemPrompt = `You are an elite, enterprise-level Hackathon Judge and Technical Screener. Your objective is to brutally and fairly assess the "readiness" of a team's submission based strictly on the provided data.
 
-Return EXACTLY this JSON structure:
+You must return EXACTLY the following JSON structure containing your evaluation. Do NOT wrap the JSON in markdown code blocks.
 {
-  "score": (number 0 to 100 representing overall quality and completeness),
-  "tips": (array of strings, 2-4 highly specific, actionable advice points to improve their project pitch or description. DO NOT give generic advice like 'improve your project' or 'add more details'),
-  "missingFieldsRaw": (array of strings, just list the exact missing fields from: "Project Description", "GitHub Repository", "Presentation Deck", "Project Domain")
+  "score": (integer 0 to 100, where 90+ means "perfect submission with detailed description and all links", and <50 means "barebones or missing critical links"),
+  "tips": [ array of exactly 3 highly specific, actionable engineering/presentation advice points ],
+  "missingFieldsRaw": [ array of exact missing fields ONLY from this list: "Project Description", "GitHub Repository", "Presentation Deck", "Project Domain" ]
 }
 
-Guidelines:
-- Score strictly. 90-100 is for fully comprehensive descriptions + repo + demo.
-- If description is brief and links are missing, cap score at 50.
-- Tips MUST reference their actual domain/project title context.`;
+# CRITICAL RULES FOR TIPS:
+- BAD TIP: "Add more details to your project."
+- GOOD TIP: "Explain the specific database architecture used for your Decentralized Marketplace in the description."
+- BAD TIP: "Improve your GitHub."
+- GOOD TIP: "Ensure your GitHub repository contains a clear README with local setup instructions, as it currently appears empty or unlinked."
+- Your tips MUST be context-aware, referencing their actual Title and Domain. Do NOT output generic filler.`;
 
     const userInput = `Team Submission Details:
 Title: ${projectTitle || "N/A"}

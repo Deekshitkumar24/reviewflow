@@ -61,9 +61,9 @@ export async function POST(request: Request) {
         ? judgeProgressRes.map(j => `${j.mentorName}: ${j.reviewCount} reviews`).join(', ') 
         : 'No reviews submitted by any judge yet';
 
-      const systemPrompt = `You are the ReviewFlow AI Assistant. You answer questions from administrators about the system.
+      const systemPrompt = `You are the ReviewFlow Enterprise AI Event Assistant. You assist administrators and event organizers with precision, clarity, and deep analytical insight.
       
-# Aggregate Statistics
+# Aggregate Capabilities & Context Data
 - Total Events: ${totalEvents[0].value} (Active: ${activeEvents[0].value})
 - Total Teams: ${totalTeams[0].value} (Checked In: ${checkedInTeams[0].value})
 - Total Labs: ${totalLabs[0].value}
@@ -74,10 +74,11 @@ export async function POST(request: Request) {
 - Top Teams (Precomputed): ${topTeamsList}
 - Judge Review Progress (Completed Reviews): ${judgeProgressStats}
 
-# RULES
-1. Enforce structured replies: Use bullet points or short sections. Avoid long paragraphs.
-2. If the user's question cannot be answered using the data provided above: Reply EXACTLY with "I don't have that data available right now." Never guess.
-3. Be helpful, professional, and do NOT expose raw scores or PII.`;
+# CORE INTELLIGENCE RULES (NEVER VIOLATE):
+1. **Zero Hallucination Tolerance:** If the user asks for data, metrics, or specifics not explicitly provided in the context above, you MUST answer ONLY with: "I don't have that data available right now." Do not attempt to guess, extrapolate, or synthesize information that is absent.
+2. **Enterprise Output Structure:** Always format your response using professional, properly structured markdown. Use highly readable bullet points, bolded key terms, and short, decisive paragraphs. Never output a monolithic wall of text.
+3. **Data Privacy:** Never expose raw scores, passwords, or PII. Maintain strict professional detachment.
+4. **Tone:** Constructive, analytical, executive-summary style.`;
 
       // Safely process history and cap it directly here if needed
       const rawHistory = Array.isArray(body.history) ? body.history : [];

@@ -12,84 +12,185 @@ export async function callGemini(params: {
   jsonMode?: boolean;
 }): Promise<any | AIErrorResponse> {
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const contents: any[] = [];
+  if (params.history && params.history.length > 0) {
+    const validHistory = params.history.filter(m => m.role !== 'system');
+    
+    let expectedRole = 'user';
+    for (const msg of validHistory) {
+       const role = msg.role === 'assistant' ? 'model' : 'user';
+       if (role === expectedRole) {
+         contents.push({ role, parts: [{ text: msg.content }] });
+         expectedRole = role === 'user' ? 'model' : 'user';
+       }
+    }
+  }
 
+  if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+     contents[contents.length - 1].parts[0].text += '\n\n' + params.userInput;
+  } else {
+     contents.push({ role: "user", parts: [{ text: params.userInput }] });
+  }
+
+  let geminiError: any = null;
+  let geminiSuccess = false;
+  let responseData: any = null;
   let attempt = 0;
 
-  while (attempt < 2) {
+  // 2. Gemini Execution (Wrapped in try/catch)
+  while (attempt < 2 && !geminiSuccess) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
       const model = genAI.getGenerativeModel({ 
-        model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+        model: modelName,
         systemInstruction: params.systemPrompt,
         generationConfig: params.jsonMode ? { responseMimeType: "application/json" } : undefined
       });
 
-      const contents = [];
-      if (params.history) {
-        for (const msg of params.history) {
-          if (msg.role !== 'system') { // system is mapped via systemInstruction
-             const role = msg.role === 'assistant' ? 'model' : 'user';
-             contents.push({ role, parts: [{ text: msg.content }] });
-          }
-        }
-      }
-      contents.push({ role: "user", parts: [{ text: params.userInput }] });
-
       const response = await model.generateContent({ contents }, { signal: controller.signal });
       clearTimeout(timeoutId);
 
-      const resultText = response.response.text();
+      const candidate = response.response.candidates?.[0];
+      const resultText = candidate?.content?.parts?.[0]?.text || "";
       const tokensUsed = response.response.usageMetadata?.totalTokenCount || 0;
 
+      if (!resultText && !candidate) {
+        throw new Error("AI returned an empty response or was blocked.");
+      }
+
+      let parsedData = resultText;
       if (params.jsonMode && resultText) {
         try {
-          const parsed = JSON.parse(resultText);
-          const finalRes = { ...parsed, tokensUsed };
-          return finalRes;
+          parsedData = JSON.parse(resultText);
         } catch {
-          return {
-            error: true,
-            message: "Failed to parse AI output as JSON.",
-            retryable: true,
-          } as AIErrorResponse;
+          throw new Error("Failed to parse AI output as JSON.");
         }
       }
 
-      const finalResponse = {
-        result: resultText,
+      responseData = {
+        data: parsedData,
+        usage: { totalTokenCount: tokensUsed },
+        providerUsed: "gemini",
+        fallbackTriggered: false,
+        // Existing return format for compatibility
+        result: parsedData,
         tokensUsed,
+        ...(typeof parsedData === 'object' ? parsedData : {})
       };
-
-      return finalResponse;
+      geminiSuccess = true;
     } catch (error: any) {
-      if (error.name === "AbortError" || error.code === "ABORT_ERR") {
-        clearTimeout(timeoutId);
-        return {
-          error: true,
-          message: "AI request timed out.",
-          retryable: true,
-        } as AIErrorResponse;
+      geminiError = error;
+      const isTimeout = error.name === "AbortError" || error.code === "ABORT_ERR";
+      const status = error.status || error.response?.status || 'unknown';
+      
+      const isQuota = status === 429 || error.message?.includes("429") || error.message?.includes("quota");
+      
+      if (isTimeout || isQuota) {
+        break; // Break loop immediately to allow Vertex fallback
       }
       
-      if (error.status === 429 || error.message?.includes("429") || error.message?.includes("quota")) {
-        clearTimeout(timeoutId);
-        return {
-          error: true,
-          message: "AI service temporarily unavailable due to quota limits. Please try again later.",
-          retryable: false,
-        } as AIErrorResponse;
-      }
       attempt++;
       if (attempt >= 2) {
-        clearTimeout(timeoutId);
-        return {
-          error: true,
-          message: error.message || "AI temporarily unavailable",
-          retryable: true,
-        } as AIErrorResponse;
+        break;
       }
+      await new Promise(res => setTimeout(res, 2000));
     }
   }
-}
 
+  if (geminiSuccess) {
+    return responseData;
+  }
+
+  // 3. Error Classification
+  const status = geminiError?.status || geminiError?.response?.status || 'unknown';
+  const isTimeout = geminiError?.name === "AbortError" || geminiError?.code === "ABORT_ERR";
+  const doNotFallback = status === 400 || status === 401;
+
+  if (doNotFallback || !process.env.VERTEX_API_KEY) {
+    throw geminiError || new Error("Gemini API failed");
+  }
+
+  // 4. Vertex Fallback
+  let vertexAttempt = 0;
+  let vertexError: any = null;
+
+  while (vertexAttempt < 2) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const vertexKey = process.env.VERTEX_API_KEY;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${vertexKey}`;
+
+      const payload = {
+        contents,
+        systemInstruction: { parts: [{ text: params.systemPrompt }] },
+        generationConfig: params.jsonMode ? { responseMimeType: "application/json" } : undefined
+      };
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`Vertex API error: ${res.status} ${res.statusText} - ${errBody}`);
+      }
+
+      const response = await res.json();
+
+      // 5. Response Normalization
+      const candidate = response.candidates?.[0];
+      const resultText = candidate?.content?.parts?.[0]?.text || "";
+      const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
+
+      if (!resultText && !candidate) {
+        throw new Error("Vertex returned an empty response or was blocked.");
+      }
+
+      let parsedData = resultText;
+      if (params.jsonMode && resultText) {
+        try {
+          parsedData = JSON.parse(resultText);
+        } catch {
+          throw { message: "Failed to parse AI output as JSON." };
+        }
+      }
+
+      return {
+        data: parsedData,
+        usage: { totalTokenCount: tokensUsed },
+        providerUsed: "vertex",
+        fallbackTriggered: true,
+        geminiError: geminiError?.message || "Unknown Gemini Error",
+        // Existing return format for compatibility
+        result: parsedData,
+        tokensUsed,
+        ...(typeof parsedData === 'object' ? parsedData : {})
+      };
+
+    } catch (error: any) {
+      vertexError = error;
+      vertexAttempt++;
+      if (vertexAttempt >= 2) {
+        break;
+      }
+      await new Promise(res => setTimeout(res, 2000));
+    }
+  }
+
+  // 7. Error Handling (Both failed)
+  throw {
+    message: "AI request failed on all providers",
+    geminiError: geminiError?.message || String(geminiError),
+    vertexError: vertexError?.message || String(vertexError)
+  };
+}

@@ -80,9 +80,16 @@ export async function POST(request: Request) {
       return errorResponse('INVALID_ROLE', 'Role not found', 400);
     }
 
-    // Generate temp password
-    const tempPassword = generateTempPassword();
-    const passwordHash = await hashPassword(tempPassword);
+    // Generate temp password or use provided password
+    let tempPassword: string | undefined = undefined;
+    let passwordHash: string;
+    
+    if (data.password) {
+      passwordHash = await hashPassword(data.password);
+    } else {
+      tempPassword = generateTempPassword();
+      passwordHash = await hashPassword(tempPassword);
+    }
 
     const insertedUsers = await db.insert(users).values({
       roleId: roleRecord.id,
@@ -90,7 +97,7 @@ export async function POST(request: Request) {
       email: data.email.toLowerCase(),
       phone: data.phone || null,
       passwordHash,
-      mustChangePassword: true,
+      mustChangePassword: false,
       status: 'active',
     }).returning();
 

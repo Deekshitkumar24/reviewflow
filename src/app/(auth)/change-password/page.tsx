@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import apiClient from '@/lib/apiClient';
 
 const changePasswordSchema = z.object({
+  currentPassword: z.string().optional(),
   newPassword: z.string()
     .min(8, 'Password must be at least 8 characters')
     .regex(/[A-Z]/, 'Must contain uppercase letter')
@@ -58,6 +59,7 @@ export default function ChangePasswordPage() {
     setIsLoading(true);
     try {
       await apiClient.post('/auth/change-password', {
+        currentPassword: data.currentPassword,
         newPassword: data.newPassword,
         confirmPassword: data.confirmPassword,
       }, {
@@ -112,24 +114,45 @@ export default function ChangePasswordPage() {
             <Shield className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Set New Password
+            {user?.mustChangePassword ? 'Set New Password' : 'Change Password'}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            You must change your password before continuing
+            {user?.mustChangePassword 
+              ? 'You must change your password before continuing' 
+              : 'Enter your current password and choose a new one'}
           </p>
         </div>
 
         {/* Card */}
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl shadow-gray-200/50 dark:shadow-black/20 border border-gray-200/50 dark:border-gray-800 p-8">
           {/* Amber warning banner */}
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-sm text-amber-700 dark:text-amber-400 mb-6">
-            First-time login detected. Please set a new secure password to continue.
-          </div>
+          {user?.mustChangePassword && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-sm text-amber-700 dark:text-amber-400 mb-6">
+              First-time login detected. Please set a new secure password to continue.
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             {errors.root && (
               <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 text-sm text-red-700 dark:text-red-400">
                 {errors.root.message}
+              </div>
+            )}
+
+            {/* Current Password (if required) */}
+            {!user?.mustChangePassword && (
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current Password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  className="h-11"
+                  {...register('currentPassword')}
+                />
+                {errors.currentPassword && (
+                  <p className="text-xs text-red-500">{errors.currentPassword.message}</p>
+                )}
               </div>
             )}
 

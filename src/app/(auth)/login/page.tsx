@@ -193,6 +193,21 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
+
+          {/* Student Login Link */}
+          <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 text-center">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              Are you a participating student?
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-11 text-sm font-medium border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              onClick={() => router.push('/student/login')}
+            >
+              Student Login <span className="ml-2">→</span>
+            </Button>
+          </div>
         </div>
 
         {/* Footer */}

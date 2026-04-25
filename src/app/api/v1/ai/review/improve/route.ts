@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = "You are an expert hackathon judge. Transform the rough feedback into a professional, specific, constructive review. 2-3 paragraphs. Plain text only.";
+    const systemPrompt = "You are a Senior Technical Evaluator. Your task is to transform the provided rough feedback into a highly professional, specific, and constructive review. MUST be exactly 2-3 paragraphs. Do NOT add new information or hallucinate facts not present in the draft. Plain text only, no markdown.";
     const contextStr = submissionContext ? `Context about submission:\n${submissionContext}\n\n` : '';
     const userInput = `${contextStr}Rough Notes to Improve:\n${trimmedInput}`;
 

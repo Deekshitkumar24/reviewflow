@@ -13,6 +13,7 @@ const updateUserSchema = z.object({
   status: z.enum(['active', 'disabled']).optional(),
   roleId: z.string().uuid().optional(),
   resetPassword: z.boolean().optional(),
+  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
 });
 
 // PATCH /api/v1/users/[userId]
@@ -21,7 +22,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ us
     const { userId } = await params;
     const validation = await validateBody(request, updateUserSchema);
     if (validation.error) return validation.error;
-    const { fullName, phone, status, roleId, resetPassword } = validation.data!;
+    const { fullName, phone, status, roleId, resetPassword, password } = validation.data!;
 
     const existing = await db.query.users.findFirst({ 
       where: (users, { eq, and, isNull }) => and(eq(users.id, userId), isNull(users.deletedAt)) 
@@ -36,10 +37,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ us
     if (roleId !== undefined) updateData.roleId = roleId;
 
     let tempPassword: string | undefined;
-    if (resetPassword) {
+    if (password) {
+      updateData.passwordHash = await hashPassword(password);
+      updateData.mustChangePassword = false;
+    } else if (resetPassword) {
       tempPassword = generateTempPassword();
       updateData.passwordHash = await hashPassword(tempPassword);
-      updateData.mustChangePassword = true;
+      updateData.mustChangePassword = false;
     }
 
     const updatedList = await db.update(users)

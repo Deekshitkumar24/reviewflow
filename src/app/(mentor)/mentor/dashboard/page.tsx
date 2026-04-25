@@ -113,9 +113,9 @@ export default function MentorDashboard() {
             <CheckCircle2 className="w-5 h-5 text-green-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {loading ? <Skeleton className="w-8 h-7 mx-auto sm:mx-0" /> : totalReviewed}
-            </p>
+            </div>
             <p className="text-xs text-gray-500">Reviewed</p>
           </div>
         </CardContent></Card>
@@ -125,9 +125,9 @@ export default function MentorDashboard() {
             <Clock className="w-5 h-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {loading ? <Skeleton className="w-8 h-7 mx-auto sm:mx-0" /> : totalPending}
-            </p>
+            </div>
             <p className="text-xs text-gray-500">Pending</p>
           </div>
         </CardContent></Card>
@@ -137,9 +137,9 @@ export default function MentorDashboard() {
             <CheckCircle2 className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {loading ? <Skeleton className="w-8 h-7 mx-auto sm:mx-0" /> : totalReady}
-            </p>
+            </div>
             <p className="text-xs text-gray-500">Teams Ready</p>
           </div>
         </CardContent></Card>
