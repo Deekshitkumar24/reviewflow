@@ -90,9 +90,6 @@ export async function middleware(request: NextRequest) {
   // ─── Staff Routes ───
   const protectedPrefix = matchedProtectedPrefix(pathname);
   if (!protectedPrefix) {
-    if (pathname === '/') {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
     return NextResponse.next();
   }
 
