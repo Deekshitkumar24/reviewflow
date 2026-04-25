@@ -65,9 +65,9 @@ export async function POST(req: Request) {
             
             if (percentage > 50) {
                 // If highly similar, use AI to extract the structural insight
-                const systemPrompt = \`You are an AI similarity analyst. Given two project descriptions that have been statistically flagged for plagiarism (\${percentage}% overlap), extract exactly 1-3 crisp bullet points representing the conceptual overlaps or identical phrases. Return ONLY a JSON array of strings. Do not wrap in markdown.\`;
+                const systemPrompt = `You are an AI similarity analyst. Given two project descriptions that have been statistically flagged for plagiarism (${percentage}% overlap), extract exactly 1-3 crisp bullet points representing the conceptual overlaps or identical phrases. Return ONLY a JSON array of strings. Do not wrap in markdown.`;
                 
-                const userInput = \`Description A: \${realSubmissions[i].text}\\n\\nDescription B: \${realSubmissions[j].text}\`;
+                const userInput = `Description A: ${realSubmissions[i].text}\n\nDescription B: ${realSubmissions[j].text}`;
                 
                 let overlappingSections = ["High statistical similarity detected based on lexical overlap."];
                 
